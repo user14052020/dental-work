@@ -249,13 +249,13 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8100/api/v1 INTERNAL_API_URL=http://127.0.0
 
 ### Короткий запуск через PM2 на VPS
 
-Если на сервере уже есть `pm2`, для этого проекта лучше использовать отдельный `PM2_HOME`, чтобы логи и метаданные лежали в `/opt/dental-work/.pm2`.
+Если на сервере уже есть обычный общий `pm2`, для этого проекта не нужно поднимать отдельный daemon через `PM2_HOME`. Достаточно запускать процессы через `ecosystem.config.cjs`, где логи уже направлены в `/opt/dental-work/.pm2/logs`.
 
 ```bash
 cd /opt/dental-work
 mkdir -p /opt/dental-work/.pm2/logs
-PM2_HOME=/opt/dental-work/.pm2 pm2 start ecosystem.config.cjs
-PM2_HOME=/opt/dental-work/.pm2 pm2 save
+pm2 start ecosystem.config.cjs
+pm2 save
 ```
 
 После этого логи будут лежать здесь:
@@ -265,14 +265,14 @@ PM2_HOME=/opt/dental-work/.pm2 pm2 save
 - `/opt/dental-work/.pm2/logs/dental-lab-web-out.log`
 - `/opt/dental-work/.pm2/logs/dental-lab-web-error.log`
 
-Для управления этим проектом нужно использовать тот же `PM2_HOME`:
+Для управления этим проектом используется обычный `pm2`:
 
 ```bash
-PM2_HOME=/opt/dental-work/.pm2 pm2 status
-PM2_HOME=/opt/dental-work/.pm2 pm2 restart dental-lab-backend
-PM2_HOME=/opt/dental-work/.pm2 pm2 restart dental-lab-web
-PM2_HOME=/opt/dental-work/.pm2 pm2 logs dental-lab-backend
-PM2_HOME=/opt/dental-work/.pm2 pm2 logs dental-lab-web
+pm2 status
+pm2 restart dental-lab-backend
+pm2 restart dental-lab-web
+pm2 logs dental-lab-backend
+pm2 logs dental-lab-web
 ```
 
 ### Что делать с Redis и Elasticsearch
