@@ -249,12 +249,30 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8100/api/v1 INTERNAL_API_URL=http://127.0.0
 
 ### Короткий запуск через PM2 на VPS
 
-Если на сервере уже есть `pm2`, то удобнее запускать сервисы так:
+Если на сервере уже есть `pm2`, для этого проекта лучше использовать отдельный `PM2_HOME`, чтобы логи и метаданные лежали в `/opt/dental-work/.pm2`.
 
 ```bash
-pm2 start "cd /opt/dental-work && PYTHONPATH=backend backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8100" --name dental-lab-backend
-pm2 start "cd /opt/dental-work/web && AUTH_COOKIE_SECURE=false NEXT_PUBLIC_API_URL=http://127.0.0.1:8100/api/v1 INTERNAL_API_URL=http://127.0.0.1:8100/api/v1 npm run start -- --hostname 0.0.0.0 --port 3100" --name dental-lab-web
-pm2 save
+cd /opt/dental-work
+mkdir -p /opt/dental-work/.pm2/logs
+PM2_HOME=/opt/dental-work/.pm2 pm2 start ecosystem.config.cjs
+PM2_HOME=/opt/dental-work/.pm2 pm2 save
+```
+
+После этого логи будут лежать здесь:
+
+- `/opt/dental-work/.pm2/logs/dental-lab-backend-out.log`
+- `/opt/dental-work/.pm2/logs/dental-lab-backend-error.log`
+- `/opt/dental-work/.pm2/logs/dental-lab-web-out.log`
+- `/opt/dental-work/.pm2/logs/dental-lab-web-error.log`
+
+Для управления этим проектом нужно использовать тот же `PM2_HOME`:
+
+```bash
+PM2_HOME=/opt/dental-work/.pm2 pm2 status
+PM2_HOME=/opt/dental-work/.pm2 pm2 restart dental-lab-backend
+PM2_HOME=/opt/dental-work/.pm2 pm2 restart dental-lab-web
+PM2_HOME=/opt/dental-work/.pm2 pm2 logs dental-lab-backend
+PM2_HOME=/opt/dental-work/.pm2 pm2 logs dental-lab-web
 ```
 
 ### Что делать с Redis и Elasticsearch
