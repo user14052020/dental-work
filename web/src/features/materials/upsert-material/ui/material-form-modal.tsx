@@ -3,7 +3,7 @@
 import { Button, Group, Modal, Select, Stack, Textarea, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { createMaterial, updateMaterial } from "@/entities/materials/api/materials-api";
 import { materialsQueryKeys } from "@/entities/materials/model/query-keys";
@@ -66,6 +66,7 @@ type MaterialFormModalProps = {
 
 export function MaterialFormModal({ opened, onClose, material }: MaterialFormModalProps) {
   const queryClient = useQueryClient();
+  const syncedMaterialKeyRef = useRef<string | null>(null);
   const form = useForm<MaterialFormValues>({
     initialValues: emptyValues,
     validate: {
@@ -76,9 +77,17 @@ export function MaterialFormModal({ opened, onClose, material }: MaterialFormMod
 
   useEffect(() => {
     if (!opened) {
+      syncedMaterialKeyRef.current = null;
       return;
     }
 
+    const nextSyncKey = material ? `${material.id}:${material.updated_at}` : "new";
+
+    if (syncedMaterialKeyRef.current === nextSyncKey) {
+      return;
+    }
+
+    syncedMaterialKeyRef.current = nextSyncKey;
     form.setValues(
       material
         ? {

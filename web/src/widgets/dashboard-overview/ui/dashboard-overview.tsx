@@ -1,12 +1,14 @@
-import { Alert, Grid, Group, Loader, List, Stack, Text } from "@mantine/core";
+import { Alert, Group, Loader, List, SimpleGrid, Stack, Text, ThemeIcon } from "@mantine/core";
 import {
   IconAlertTriangle,
   IconChartBar,
+  IconClockHour4,
   IconCoin,
   IconFlask2,
   IconReceipt2,
   IconUsers
 } from "@tabler/icons-react";
+import { ReactNode } from "react";
 
 import { DashboardSnapshot } from "@/entities/dashboard/model/types";
 import { formatCurrency } from "@/shared/lib/formatters/format-currency";
@@ -20,6 +22,43 @@ type DashboardOverviewProps = {
   isError: boolean;
 };
 
+type DashboardInsetCardProps = {
+  title: string;
+  description: string;
+  value?: string;
+  icon: ReactNode;
+  compactValue?: boolean;
+};
+
+function DashboardInsetCard({ title, description, value, icon, compactValue = false }: DashboardInsetCardProps) {
+  return (
+    <div className="h-full rounded-[24px] border border-white/60 bg-white/72 p-5">
+      <Stack gap="md" className="h-full">
+        <ThemeIcon size={44} radius="xl" color="teal" variant="light">
+          {icon}
+        </ThemeIcon>
+        <Stack gap={6} className="mt-auto">
+          <Text c="dimmed" size="sm">
+            {title}
+          </Text>
+          {value ? (
+            <Text
+              fw={800}
+              component="div"
+              className={compactValue ? "text-[1.1rem] leading-tight md:text-[1.35rem]" : "text-[1.9rem] leading-none"}
+            >
+              {value}
+            </Text>
+          ) : null}
+          <Text c="dimmed" size="sm">
+            {description}
+          </Text>
+        </Stack>
+      </Stack>
+    </div>
+  );
+}
+
 function DashboardTopList({
   title,
   items,
@@ -30,7 +69,7 @@ function DashboardTopList({
   emptyMessage: string;
 }) {
   return (
-    <SectionCard>
+    <SectionCard className="h-full" padding="xl">
       <Stack gap="md">
         <Text fw={700} size="lg">
           {title}
@@ -39,8 +78,8 @@ function DashboardTopList({
           <List spacing="sm" withPadding>
             {items.map((item) => (
               <List.Item key={item.id}>
-                <Group justify="space-between">
-                  <Text>{item.label}</Text>
+                <Group justify="space-between" align="start" wrap="wrap" className="gap-y-1">
+                  <Text fw={600}>{item.label}</Text>
                   <Text c="dimmed" size="sm">
                     {item.work_count} работ · {formatCurrency(item.amount)}
                   </Text>
@@ -77,102 +116,78 @@ export function DashboardOverview({ data, isLoading, isError }: DashboardOvervie
 
   return (
     <Stack gap="lg">
-      <Grid>
-        <Grid.Col span={{ base: 12, md: 6, xl: 3 }}>
+      <SimpleGrid cols={{ base: 1, sm: 2, xl: 4 }} spacing="lg" verticalSpacing="lg">
           <KpiCard
             title="Активные работы"
             value={String(data.active_works)}
             hint="Заказы в производственном цикле"
             icon={<IconChartBar size={26} />}
           />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 6, xl: 3 }}>
           <KpiCard
             title="Просроченные"
             value={String(data.overdue_works)}
             hint="Требуют приоритизации"
             icon={<IconAlertTriangle size={26} />}
           />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 6, xl: 3 }}>
           <KpiCard
             title="Выручка"
             value={formatCurrency(data.revenue)}
             hint="Сумма заказов за период"
             icon={<IconReceipt2 size={26} />}
           />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 6, xl: 3 }}>
           <KpiCard
             title="Прибыль"
             value={formatCurrency(data.profit)}
             hint="После вычета материалов и труда"
             icon={<IconCoin size={26} />}
           />
-        </Grid.Col>
-      </Grid>
+      </SimpleGrid>
 
-      <Grid>
-        <Grid.Col span={{ base: 12, lg: 7 }}>
-          <SectionCard>
+      <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg" verticalSpacing="lg">
+          <SectionCard className="h-full" padding="xl">
             <Stack gap="md">
               <Text fw={700} size="lg">
                 Финансовый срез
               </Text>
-              <Group grow>
-                <div className="rounded-[22px] bg-white/70 p-5">
-                  <Text c="dimmed" size="sm">
-                    Материальные расходы
-                  </Text>
-                  <Text fw={800} mt={8} size="1.8rem">
-                    {formatCurrency(data.material_expenses)}
-                  </Text>
-                </div>
-                <div className="rounded-[22px] bg-white/70 p-5">
-                  <Text c="dimmed" size="sm">
-                    Сгенерировано
-                  </Text>
-                  <Text fw={800} mt={8} size="1.2rem">
-                    {formatDateTime(data.generated_at)}
-                  </Text>
-                </div>
-              </Group>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing="md">
+                <DashboardInsetCard
+                  title="Материальные расходы"
+                  value={formatCurrency(data.material_expenses)}
+                  description="Актуальный расход материалов за выбранный период."
+                  icon={<IconFlask2 size={20} />}
+                />
+                <DashboardInsetCard
+                  title="Сгенерировано"
+                  value={formatDateTime(data.generated_at)}
+                  description="Время последнего обновления аналитического среза."
+                  compactValue
+                  icon={<IconClockHour4 size={20} />}
+                />
+              </SimpleGrid>
             </Stack>
           </SectionCard>
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, lg: 5 }}>
-          <SectionCard>
+          <SectionCard className="h-full" padding="xl">
             <Stack gap="md">
               <Text fw={700} size="lg">
                 Быстрый обзор
               </Text>
-              <Group grow>
-                <div className="rounded-[22px] bg-white/70 p-5">
-                  <Group gap="xs">
-                    <IconUsers size={18} />
-                    <Text fw={600}>Клиенты</Text>
-                  </Group>
-                  <Text c="dimmed" mt={6} size="sm">
-                    Топ по объему заказов и повторным работам.
-                  </Text>
-                </div>
-                <div className="rounded-[22px] bg-white/70 p-5">
-                  <Group gap="xs">
-                    <IconFlask2 size={18} />
-                    <Text fw={600}>Материалы</Text>
-                  </Group>
-                  <Text c="dimmed" mt={6} size="sm">
-                    Контроль расхода и низких остатков вынесен в отдельный экран.
-                  </Text>
-                </div>
-              </Group>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing="md">
+                <DashboardInsetCard
+                  title="Клиенты"
+                  description="Топ по объему заказов и повторным работам вынесен в отдельный блок ниже."
+                  icon={<IconUsers size={20} />}
+                />
+                <DashboardInsetCard
+                  title="Материалы"
+                  description="Контроль расхода и низких остатков доступен в отдельном рабочем разделе."
+                  icon={<IconFlask2 size={20} />}
+                />
+              </SimpleGrid>
             </Stack>
           </SectionCard>
-        </Grid.Col>
-      </Grid>
+      </SimpleGrid>
 
-      <Grid>
-        <Grid.Col span={{ base: 12, lg: 6 }}>
+      <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg" verticalSpacing="lg">
           <DashboardTopList
             title="Топ клиентов"
             emptyMessage="Пока нет данных по клиентам."
@@ -183,8 +198,6 @@ export function DashboardOverview({ data, isLoading, isError }: DashboardOvervie
               amount: item.amount
             }))}
           />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, lg: 6 }}>
           <DashboardTopList
             title="Топ исполнителей"
             emptyMessage="Пока нет данных по исполнителям."
@@ -195,8 +208,7 @@ export function DashboardOverview({ data, isLoading, isError }: DashboardOvervie
               amount: item.amount
             }))}
           />
-        </Grid.Col>
-      </Grid>
+      </SimpleGrid>
     </Stack>
   );
 }

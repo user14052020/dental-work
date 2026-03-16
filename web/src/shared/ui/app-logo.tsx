@@ -3,21 +3,21 @@ import { IconDental } from "@tabler/icons-react";
 
 export function AppLogo() {
   return (
-    <Group gap="md" wrap="nowrap">
+    <Group gap="md" wrap="nowrap" className="min-w-0">
       <ThemeIcon size={48} radius="xl" color="teal" variant="light">
         <IconDental size={24} />
       </ThemeIcon>
 
-      <Stack gap={2}>
+      <Stack gap={2} className="min-w-0">
         <Group gap="xs">
-          <Text fw={800} size="lg">
+          <Text fw={800} size="lg" className="truncate">
             Кабинет лаборатории
           </Text>
           <Badge radius="xl" variant="light" color="teal">
             Веб
           </Badge>
         </Group>
-        <Text c="dimmed" size="sm">
+        <Text c="dimmed" size="sm" className="hidden sm:block">
           Операционный кабинет лаборатории
         </Text>
       </Stack>

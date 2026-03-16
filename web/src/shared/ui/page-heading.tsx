@@ -9,8 +9,8 @@ type PageHeadingProps = PropsWithChildren<{
 
 export function PageHeading({ title, description, actions, children }: PageHeadingProps) {
   return (
-    <Stack gap="lg">
-      <Group justify="space-between" align="end">
+    <Stack gap="lg" className="min-w-0">
+      <Group justify="space-between" align="end" wrap="wrap">
         <Stack gap={4}>
           <Title order={1} size="h2">
             {title}

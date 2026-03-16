@@ -3,7 +3,7 @@
 import { Button, Group, Modal, Stack, Textarea, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { createClient, updateClient } from "@/entities/clients/api/clients-api";
 import { clientsQueryKeys } from "@/entities/clients/model/query-keys";
@@ -52,6 +52,7 @@ function buildClientUpdatePayload(values: ClientFormValues): ClientUpdatePayload
 
 export function ClientFormModal({ opened, onClose, client }: ClientFormModalProps) {
   const queryClient = useQueryClient();
+  const syncedClientKeyRef = useRef<string | null>(null);
   const form = useForm<ClientFormValues>({
     initialValues: emptyValues,
     validate: {
@@ -61,9 +62,17 @@ export function ClientFormModal({ opened, onClose, client }: ClientFormModalProp
 
   useEffect(() => {
     if (!opened) {
+      syncedClientKeyRef.current = null;
       return;
     }
 
+    const nextSyncKey = client ? `${client.id}:${client.updated_at}` : "new";
+
+    if (syncedClientKeyRef.current === nextSyncKey) {
+      return;
+    }
+
+    syncedClientKeyRef.current = nextSyncKey;
     form.setValues(
       client
         ? {

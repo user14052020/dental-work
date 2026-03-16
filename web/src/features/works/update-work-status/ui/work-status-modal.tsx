@@ -3,7 +3,7 @@
 import { Button, Group, Modal, Select, Stack, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { updateWorkStatus } from "@/entities/works/api/works-api";
 import { worksQueryKeys } from "@/entities/works/model/query-keys";
@@ -25,6 +25,7 @@ type WorkStatusFormValues = {
 
 export function WorkStatusModal({ work, opened, onClose }: WorkStatusModalProps) {
   const queryClient = useQueryClient();
+  const syncedWorkKeyRef = useRef<string | null>(null);
   const form = useForm<WorkStatusFormValues>({
     initialValues: {
       status: work?.status ?? "new",
@@ -33,11 +34,23 @@ export function WorkStatusModal({ work, opened, onClose }: WorkStatusModalProps)
   });
 
   useEffect(() => {
+    if (!opened) {
+      syncedWorkKeyRef.current = null;
+      return;
+    }
+
+    const nextSyncKey = `${work?.id ?? "new"}:${work?.status ?? "new"}`;
+
+    if (syncedWorkKeyRef.current === nextSyncKey) {
+      return;
+    }
+
+    syncedWorkKeyRef.current = nextSyncKey;
     form.setValues({
       status: work?.status ?? "new",
       completed_at: ""
     });
-  }, [form, work]);
+  }, [form, opened, work]);
 
   const mutation = useMutation({
     mutationFn: () =>

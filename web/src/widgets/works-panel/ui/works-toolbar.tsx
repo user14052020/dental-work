@@ -42,8 +42,8 @@ export function WorksToolbar({
   onCreate
 }: WorksToolbarProps) {
   return (
-    <Group align="end" justify="space-between">
-      <div className="grid flex-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <Group align="end" justify="space-between" wrap="wrap" className="min-w-0">
+      <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <SearchField
           label="Поиск"
           placeholder="Поиск по номеру, клиенту, исполнителю, описанию"

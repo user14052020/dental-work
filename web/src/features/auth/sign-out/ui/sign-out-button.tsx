@@ -9,7 +9,11 @@ import { logout } from "@/entities/auth/api/auth-api";
 import { useAuthSession } from "@/entities/auth/model/auth-session-context";
 import { showErrorNotification } from "@/shared/lib/notifications/show-error";
 
-export function SignOutButton() {
+type SignOutButtonProps = {
+  fullWidth?: boolean;
+};
+
+export function SignOutButton({ fullWidth = false }: SignOutButtonProps) {
   const router = useRouter();
   const { clearSession } = useAuthSession();
   const mutation = useMutation({
@@ -26,6 +30,7 @@ export function SignOutButton() {
   return (
     <Button
       color="gray"
+      fullWidth={fullWidth}
       leftSection={<IconLogout size={16} />}
       loading={mutation.isPending}
       radius="xl"

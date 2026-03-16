@@ -3,7 +3,7 @@
 import { Button, Checkbox, Group, Modal, Stack, Textarea, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { createExecutor, updateExecutor } from "@/entities/executors/api/executors-api";
 import { executorsQueryKeys } from "@/entities/executors/model/query-keys";
@@ -59,6 +59,7 @@ type ExecutorFormModalProps = {
 
 export function ExecutorFormModal({ opened, onClose, executor }: ExecutorFormModalProps) {
   const queryClient = useQueryClient();
+  const syncedExecutorKeyRef = useRef<string | null>(null);
   const form = useForm<ExecutorFormValues>({
     initialValues: emptyValues,
     validate: {
@@ -69,9 +70,17 @@ export function ExecutorFormModal({ opened, onClose, executor }: ExecutorFormMod
 
   useEffect(() => {
     if (!opened) {
+      syncedExecutorKeyRef.current = null;
       return;
     }
 
+    const nextSyncKey = executor ? `${executor.id}:${executor.updated_at}` : "new";
+
+    if (syncedExecutorKeyRef.current === nextSyncKey) {
+      return;
+    }
+
+    syncedExecutorKeyRef.current = nextSyncKey;
     form.setValues(
       executor
         ? {

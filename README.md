@@ -183,6 +183,13 @@ cp .env.example .env
 cp web/.env.example web/.env
 ```
 
+Для запуска по обычному `http://`, без `https`, в `web/.env` обязательно должно быть:
+
+```text
+AUTH_COOKIE_SECURE=false
+INTERNAL_API_URL=http://127.0.0.1:8100/api/v1
+```
+
 2. Убедиться, что локальные сервисы подняты именно на новых портах:
 
 - `PostgreSQL` на `127.0.0.1:5433`
@@ -246,7 +253,7 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8100/api/v1 INTERNAL_API_URL=http://127.0.0
 
 ```bash
 pm2 start "cd /opt/dental-work && PYTHONPATH=backend backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8100" --name dental-lab-backend
-pm2 start "cd /opt/dental-work/web && NEXT_PUBLIC_API_URL=http://127.0.0.1:8100/api/v1 INTERNAL_API_URL=http://127.0.0.1:8100/api/v1 npm run start -- --hostname 0.0.0.0 --port 3100" --name dental-lab-web
+pm2 start "cd /opt/dental-work/web && AUTH_COOKIE_SECURE=false NEXT_PUBLIC_API_URL=http://127.0.0.1:8100/api/v1 INTERNAL_API_URL=http://127.0.0.1:8100/api/v1 npm run start -- --hostname 0.0.0.0 --port 3100" --name dental-lab-web
 pm2 save
 ```
 

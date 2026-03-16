@@ -27,14 +27,14 @@ export function WorksTable({
   onStatusChange
 }: WorksTableProps) {
   return (
-    <SectionCard>
+    <SectionCard className="min-w-0 overflow-hidden">
       {isLoading ? (
         <Group justify="center" py="xl">
           <Loader />
         </Group>
       ) : items.length ? (
         <>
-          <Table.ScrollContainer minWidth={1040}>
+          <Table.ScrollContainer minWidth={1040} type="native">
             <Table highlightOnHover verticalSpacing="md">
               <Table.Thead>
                 <Table.Tr>
