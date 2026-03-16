@@ -1,11 +1,20 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+PROJECT_ROOT_DIR = Path(__file__).resolve().parents[3]
+ENV_FILES = (
+    str(PROJECT_ROOT_DIR / ".env"),
+    str(BACKEND_DIR / ".env"),
+)
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ENV_FILES, env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "Dental Lab Platform"
     app_env: str = "development"
