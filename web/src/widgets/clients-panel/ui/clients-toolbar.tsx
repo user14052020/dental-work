@@ -11,14 +11,14 @@ type ClientsToolbarProps = {
 
 export function ClientsToolbar({ search, onSearchChange, onCreate }: ClientsToolbarProps) {
   return (
-    <Group justify="space-between">
+    <Group justify="space-between" className="w-full flex-col md:flex-row md:items-end">
       <SearchField
-        className="flex-1"
+        className="w-full md:flex-1"
         placeholder="Поиск по названию, контактам, эл. почте, телефону, адресу"
         value={search}
         onChange={(event) => onSearchChange(event.currentTarget.value)}
       />
-      <Button leftSection={<IconPlus size={16} />} onClick={onCreate}>
+      <Button leftSection={<IconPlus size={16} />} onClick={onCreate} className="w-full md:w-auto">
         Новый клиент
       </Button>
     </Group>

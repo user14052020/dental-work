@@ -14,7 +14,7 @@ export default function RootLayout({ children }: PropsWithChildren) {
   return (
     <html lang="ru">
       <head>
-        <ColorSchemeScript />
+        <ColorSchemeScript defaultColorScheme="light" />
       </head>
       <body>
         <AppProviders>{children}</AppProviders>

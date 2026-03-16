@@ -11,7 +11,7 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --font-heading: "Manrope";
   --font-body: "IBM Plex Sans";
   --app-bg: #f5f9fb;

@@ -19,15 +19,20 @@ export function ExecutorsToolbar({
   onCreate
 }: ExecutorsToolbarProps) {
   return (
-    <Group justify="space-between">
+    <Group justify="space-between" className="w-full flex-col md:flex-row md:items-end">
       <SearchField
-        className="flex-1"
+        className="w-full md:flex-1"
         placeholder="Поиск по ФИО, телефону, эл. почте, специализации, комментарию"
         value={search}
         onChange={(event) => onSearchChange(event.currentTarget.value)}
       />
-      <Switch checked={activeOnly} label="Только активные" onChange={(event) => onActiveOnlyChange(event.currentTarget.checked)} />
-      <Button leftSection={<IconPlus size={16} />} onClick={onCreate}>
+      <Switch
+        className="w-full md:w-auto"
+        checked={activeOnly}
+        label="Только активные"
+        onChange={(event) => onActiveOnlyChange(event.currentTarget.checked)}
+      />
+      <Button leftSection={<IconPlus size={16} />} onClick={onCreate} className="w-full md:w-auto">
         Новый исполнитель
       </Button>
     </Group>

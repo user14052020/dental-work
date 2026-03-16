@@ -19,15 +19,20 @@ export function MaterialsToolbar({
   onCreate
 }: MaterialsToolbarProps) {
   return (
-    <Group justify="space-between">
+    <Group justify="space-between" className="w-full flex-col md:flex-row md:items-end">
       <SearchField
-        className="flex-1"
+        className="w-full md:flex-1"
         placeholder="Поиск по названию, категории, единице, поставщику, комментарию"
         value={search}
         onChange={(event) => onSearchChange(event.currentTarget.value)}
       />
-      <Switch checked={lowStockOnly} label="Низкий остаток" onChange={(event) => onLowStockChange(event.currentTarget.checked)} />
-      <Button leftSection={<IconPlus size={16} />} onClick={onCreate}>
+      <Switch
+        className="w-full md:w-auto"
+        checked={lowStockOnly}
+        label="Низкий остаток"
+        onChange={(event) => onLowStockChange(event.currentTarget.checked)}
+      />
+      <Button leftSection={<IconPlus size={16} />} onClick={onCreate} className="w-full md:w-auto">
         Новый материал
       </Button>
     </Group>

@@ -1,6 +1,6 @@
 "use client";
 
-import { AppShell, Burger, Group, NavLink, ScrollArea, Stack, Text } from "@mantine/core";
+import { AppShell, Burger, Group, NavLink, ScrollArea, Stack } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import Link from "next/link";
 import { PropsWithChildren } from "react";
@@ -13,11 +13,11 @@ import { usePathname } from "next/navigation";
 
 export function AppShellLayout({ children }: PropsWithChildren) {
   const pathname = usePathname();
-  const [opened, { toggle }] = useDisclosure(false);
+  const [opened, { toggle, close }] = useDisclosure(false);
 
   return (
     <AppShell
-      header={{ height: { base: 148, md: 88 } }}
+      header={{ height: { base: 160, md: 88 } }}
       navbar={{ width: { base: 296, md: 320 }, breakpoint: "md", collapsed: { mobile: !opened } }}
       padding="md"
       className="app-shell-bg min-h-screen"
@@ -29,12 +29,17 @@ export function AppShellLayout({ children }: PropsWithChildren) {
           px="lg"
           className="items-start gap-y-3 py-4 md:items-center md:py-0"
         >
-          <Group gap="md">
+          <Group gap="md" wrap="nowrap" className="min-w-0">
             <Burger hiddenFrom="md" opened={opened} onClick={toggle} size="sm" />
             <AppLogo />
           </Group>
 
-          <Group gap="sm" wrap="wrap" justify="flex-end" className="min-w-0">
+          <Group
+            gap="sm"
+            wrap="wrap"
+            justify="flex-end"
+            className="min-w-0 w-full pl-[70px] md:w-auto md:pl-0"
+          >
             <CurrentUserCard />
           </Group>
         </Group>
@@ -50,6 +55,7 @@ export function AppShellLayout({ children }: PropsWithChildren) {
                     key={item.href}
                     component={Link}
                     href={item.href}
+                    onClick={close}
                     active={pathname === item.href}
                     label={item.label}
                     description={item.description}
@@ -64,13 +70,6 @@ export function AppShellLayout({ children }: PropsWithChildren) {
                 ))}
               </Stack>
             </ScrollArea>
-
-            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-soft">
-              <Text fw={700}>Поиск по всем реквизитам</Text>
-              <Text c="dimmed" mt={6} size="sm">
-                Все рабочие разделы используют серверный поиск и индексацию по полному набору реквизитов.
-              </Text>
-            </div>
 
             <div className="mt-auto">
               <SignOutButton fullWidth />

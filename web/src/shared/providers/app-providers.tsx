@@ -17,7 +17,7 @@ export function AppProviders({ children }: PropsWithChildren) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <MantineProvider theme={mantineTheme} defaultColorScheme="auto">
+      <MantineProvider theme={mantineTheme} defaultColorScheme="light" forceColorScheme="light">
         <AuthSessionProvider>
           <Notifications position="top-right" />
           {children}

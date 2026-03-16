@@ -97,8 +97,9 @@ export function CostCalculatorForm({ result, onResult }: CostCalculatorFormProps
         })}
       >
         <Stack gap="lg">
-          <Group grow align="end">
+          <div className="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-5">
             <Select
+              className="w-full"
               clearable
               data={
                 executorsQuery.data?.items.map((executor) => ({
@@ -111,21 +112,23 @@ export function CostCalculatorForm({ result, onResult }: CostCalculatorFormProps
               value={form.values.executor_id || null}
               onChange={(value) => form.setFieldValue("executor_id", value ?? "")}
             />
-            <TextInput label="Трудозатраты, часы" type="number" {...form.getInputProps("labor_hours")} />
+            <TextInput className="w-full" label="Трудозатраты, часы" type="number" {...form.getInputProps("labor_hours")} />
             <TextInput
+              className="w-full"
               label="Ставка вручную"
               placeholder="Если нужно переопределить"
               type="number"
               {...form.getInputProps("hourly_rate_override")}
             />
-            <TextInput label="Доп. расходы" type="number" {...form.getInputProps("additional_expenses")} />
-            <TextInput label="Цена продажи" type="number" {...form.getInputProps("sale_price")} />
-          </Group>
+            <TextInput className="w-full" label="Доп. расходы" type="number" {...form.getInputProps("additional_expenses")} />
+            <TextInput className="w-full" label="Цена продажи" type="number" {...form.getInputProps("sale_price")} />
+          </div>
 
           <Divider />
-          <Group justify="space-between">
+          <Group justify="space-between" className="flex-col items-start md:flex-row md:items-center">
             <Text fw={700}>Материалы</Text>
             <Button
+              className="w-full md:w-auto"
               leftSection={<IconPlus size={16} />}
               type="button"
               variant="light"
@@ -140,14 +143,19 @@ export function CostCalculatorForm({ result, onResult }: CostCalculatorFormProps
           <Stack gap="sm">
             {form.values.materials.length ? (
               form.values.materials.map((line, index) => (
-                <Group key={`${line.material_id}-${index}`} grow align="end">
+                <div
+                  key={`${line.material_id}-${index}`}
+                  className="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+                >
                   <Select
+                    className="w-full"
                     data={materialOptions}
                     label={`Материал ${index + 1}`}
                     value={line.material_id || null}
                     onChange={(value) => form.setFieldValue(`materials.${index}.material_id`, value ?? "")}
                   />
                   <TextInput
+                    className="w-full"
                     label="Количество"
                     type="number"
                     value={line.quantity}
@@ -156,6 +164,7 @@ export function CostCalculatorForm({ result, onResult }: CostCalculatorFormProps
                     }
                   />
                   <TextInput
+                    className="w-full"
                     label="Цена вручную"
                     type="number"
                     value={line.unit_cost_override}
@@ -165,15 +174,14 @@ export function CostCalculatorForm({ result, onResult }: CostCalculatorFormProps
                   />
                   <ActionIcon
                     color="red"
-                    mb={4}
-                    mt="auto"
+                    className="h-[42px] w-full self-end md:w-[42px]"
                     size="lg"
                     variant="light"
                     onClick={() => form.removeListItem("materials", index)}
                   >
                     <IconTrash size={16} />
                   </ActionIcon>
-                </Group>
+                </div>
               ))
             ) : (
               <Text c="dimmed" size="sm">
@@ -183,7 +191,7 @@ export function CostCalculatorForm({ result, onResult }: CostCalculatorFormProps
           </Stack>
 
           <Group justify="flex-end">
-            <Button loading={mutation.isPending} type="submit">
+            <Button className="w-full md:w-auto" loading={mutation.isPending} type="submit">
               Рассчитать
             </Button>
           </Group>
