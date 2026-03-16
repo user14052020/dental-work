@@ -17,30 +17,16 @@ export function AppShellLayout({ children }: PropsWithChildren) {
 
   return (
     <AppShell
-      header={{ height: { base: 160, md: 88 } }}
+      header={{ height: { base: 84, md: 88 } }}
       navbar={{ width: { base: 296, md: 320 }, breakpoint: "md", collapsed: { mobile: !opened } }}
       padding="md"
       className="app-shell-bg min-h-screen"
     >
       <AppShell.Header className="relative z-30 border-b border-white/50 bg-white/70 backdrop-blur-xl">
-        <Group
-          h="100%"
-          justify="space-between"
-          px="lg"
-          className="items-start gap-y-3 py-4 md:items-center md:py-0"
-        >
+        <Group h="100%" justify="flex-start" px="lg" className="min-w-0 items-center">
           <Group gap="md" wrap="nowrap" className="min-w-0">
             <Burger hiddenFrom="md" opened={opened} onClick={toggle} size="sm" />
             <AppLogo />
-          </Group>
-
-          <Group
-            gap="sm"
-            wrap="wrap"
-            justify="flex-end"
-            className="min-w-0 w-full pl-[70px] md:w-auto md:pl-0"
-          >
-            <CurrentUserCard />
           </Group>
         </Group>
       </AppShell.Header>
@@ -72,6 +58,9 @@ export function AppShellLayout({ children }: PropsWithChildren) {
             </ScrollArea>
 
             <div className="mt-auto">
+              <div className="mb-3 rounded-[22px] border border-white/70 bg-white/80 p-3 shadow-soft">
+                <CurrentUserCard />
+              </div>
               <SignOutButton fullWidth />
             </div>
           </Stack>
