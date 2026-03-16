@@ -1,0 +1,57 @@
+@import "@fontsource/manrope/500.css";
+@import "@fontsource/manrope/700.css";
+@import "@fontsource/manrope/800.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-sans/700.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+  --font-heading: "Manrope";
+  --font-body: "IBM Plex Sans";
+  --app-bg: #f5f9fb;
+  --app-surface: rgba(255, 255, 255, 0.82);
+  --app-line: rgba(217, 230, 234, 0.9);
+  --app-text: #132033;
+  --app-muted: #607786;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top, rgba(31, 139, 133, 0.12), transparent 30%),
+    linear-gradient(180deg, #f7fbfc 0%, #edf4f7 100%);
+  color: var(--app-text);
+  font-family: var(--font-body), sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app-shell-bg {
+  background-image:
+    radial-gradient(circle at top left, rgba(31, 139, 133, 0.16), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(61, 103, 131, 0.12), transparent 24%);
+}
+
+.panel-surface {
+  background: var(--app-surface);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--app-line);
+}
