@@ -3,11 +3,10 @@
 import { Button, Divider, Drawer, Group, Loader, Stack, Text } from "@mantine/core";
 
 import { useClientDetailQuery } from "@/entities/clients/model/use-clients-query";
+import { DeleteClientButton } from "@/features/clients/delete-client/ui/delete-client-button";
 import { formatCurrency } from "@/shared/lib/formatters/format-currency";
 import { formatDateTime } from "@/shared/lib/formatters/format-date";
 import { DetailGrid } from "@/shared/ui/detail-grid";
-
-import { DeleteClientButton } from "@/features/clients/delete-client/ui/delete-client-button";
 
 type ClientDetailDrawerProps = {
   clientId?: string;
@@ -15,6 +14,14 @@ type ClientDetailDrawerProps = {
   onClose: () => void;
   onEdit: () => void;
 };
+
+function formatDateOnly(value?: string | null) {
+  if (!value) {
+    return "—";
+  }
+
+  return value;
+}
 
 export function ClientDetailDrawer({ clientId, opened, onClose, onEdit }: ClientDetailDrawerProps) {
   const detailQuery = useClientDetailQuery(clientId);
@@ -47,6 +54,22 @@ export function ClientDetailDrawer({ clientId, opened, onClose, onEdit }: Client
               { label: "Телефон", value: detailQuery.data.phone ?? "—" },
               { label: "Эл. почта", value: detailQuery.data.email ?? "—" },
               { label: "Адрес", value: detailQuery.data.address ?? "—" },
+              { label: "Адрес доставки", value: detailQuery.data.delivery_address ?? "—" },
+              { label: "Контакт доставки", value: detailQuery.data.delivery_contact ?? "—" },
+              { label: "Телефон доставки", value: detailQuery.data.delivery_phone ?? "—" },
+              { label: "Юридическое название", value: detailQuery.data.legal_name ?? "—" },
+              { label: "Юридический адрес", value: detailQuery.data.legal_address ?? "—" },
+              { label: "ИНН", value: detailQuery.data.inn ?? "—" },
+              { label: "КПП", value: detailQuery.data.kpp ?? "—" },
+              { label: "ОГРН", value: detailQuery.data.ogrn ?? "—" },
+              { label: "Банк", value: detailQuery.data.bank_name ?? "—" },
+              { label: "БИК", value: detailQuery.data.bik ?? "—" },
+              { label: "Расчетный счет", value: detailQuery.data.settlement_account ?? "—" },
+              { label: "Корр. счет", value: detailQuery.data.correspondent_account ?? "—" },
+              { label: "Номер договора", value: detailQuery.data.contract_number ?? "—" },
+              { label: "Дата договора", value: formatDateOnly(detailQuery.data.contract_date) },
+              { label: "Подписант", value: detailQuery.data.signer_name ?? "—" },
+              { label: "Скидка / надбавка, %", value: detailQuery.data.default_price_adjustment_percent },
               { label: "Заказов", value: String(detailQuery.data.work_count) },
               { label: "Сумма заказов", value: formatCurrency(detailQuery.data.order_total) },
               { label: "Неоплачено", value: formatCurrency(detailQuery.data.unpaid_total) },
@@ -66,6 +89,30 @@ export function ClientDetailDrawer({ clientId, opened, onClose, onEdit }: Client
               </div>
             </>
           ) : null}
+
+          <Divider />
+          <Stack gap="sm">
+            <Text fw={700}>Индивидуальные цены по каталогу</Text>
+            {detailQuery.data.work_catalog_prices.length ? (
+              detailQuery.data.work_catalog_prices.map((item) => (
+                <div key={item.id} className="rounded-[20px] bg-slate-50 px-4 py-3">
+                  <Text fw={600}>
+                    {item.work_catalog_item_code} · {item.work_catalog_item_name}
+                  </Text>
+                  <Text c="dimmed" size="sm">
+                    {item.work_catalog_item_category ?? "Без категории"} · {formatCurrency(item.price)}
+                  </Text>
+                  {item.comment ? (
+                    <Text c="dimmed" mt={6} size="sm">
+                      {item.comment}
+                    </Text>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <Text c="dimmed">Индивидуальные цены для клиента пока не заданы.</Text>
+            )}
+          </Stack>
 
           <Divider />
           <Stack gap="sm">

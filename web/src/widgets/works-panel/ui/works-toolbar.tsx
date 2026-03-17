@@ -69,7 +69,7 @@ function WorksFilterFields({
         <SearchField
           className="w-full"
           label="Поиск"
-          placeholder="Поиск по номеру, клиенту, исполнителю, описанию"
+          placeholder="Поиск по номеру, клиенту, исполнителю, операции и описанию"
           value={search}
           onChange={(event) => onSearchChange(event.currentTarget.value)}
         />
@@ -165,7 +165,7 @@ export function WorksToolbar({
           <SearchField
             className="w-full"
             label="Поиск"
-            placeholder="Поиск по номеру, клиенту, исполнителю, описанию"
+            placeholder="Поиск по номеру, клиенту, исполнителю, операции и описанию"
             value={search}
             onChange={(event) => onSearchChange(event.currentTarget.value)}
           />

@@ -3,7 +3,7 @@ const fallbackInternalApiUrl = "http://localhost:8100/api/v1";
 type BackendRequestOptions = {
   path: string;
   method?: string;
-  body?: string;
+  body?: BodyInit;
   token?: string | null;
   contentType?: string | null;
   search?: string;

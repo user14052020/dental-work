@@ -14,7 +14,7 @@ export function ClientsToolbar({ search, onSearchChange, onCreate }: ClientsTool
     <Group justify="space-between" className="w-full flex-col md:flex-row md:items-end">
       <SearchField
         className="w-full md:flex-1"
-        placeholder="Поиск по названию, контактам, эл. почте, телефону, адресу"
+        placeholder="Поиск по названию, адресу, ИНН, КПП, договору и счетам"
         value={search}
         onChange={(event) => onSearchChange(event.currentTarget.value)}
       />

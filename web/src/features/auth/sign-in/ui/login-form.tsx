@@ -35,7 +35,7 @@ export function LoginForm() {
     onSuccess(session) {
       applySession(session);
       showSuccessNotification("Авторизация выполнена.");
-      router.push("/dashboard");
+      router.push("/works");
     },
     onError(error) {
       showErrorNotification(error, "Не удалось выполнить вход.");

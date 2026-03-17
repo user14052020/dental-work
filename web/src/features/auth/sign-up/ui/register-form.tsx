@@ -38,7 +38,7 @@ export function RegisterForm() {
     onSuccess(session) {
       applySession(session);
       showSuccessNotification("Учетная запись создана.");
-      router.push("/dashboard");
+      router.push("/works");
     },
     onError(error) {
       showErrorNotification(error, "Регистрация не удалась.");

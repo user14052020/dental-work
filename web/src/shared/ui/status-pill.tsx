@@ -9,9 +9,16 @@ const workStatusMeta: Record<string, { color: string; label: string }> = {
   cancelled: { color: "red", label: "Отменена" }
 };
 
+const operationStatusMeta: Record<string, { color: string; label: string }> = {
+  planned: { color: "blue", label: "Запланирована" },
+  in_progress: { color: "teal", label: "В работе" },
+  completed: { color: "green", label: "Завершена" },
+  cancelled: { color: "red", label: "Отменена" }
+};
+
 type StatusPillProps = {
   value: string | boolean | null | undefined;
-  kind?: "work" | "boolean";
+  kind?: "work" | "boolean" | "operation";
 };
 
 export function StatusPill({ value, kind = "work" }: StatusPillProps) {
@@ -25,7 +32,8 @@ export function StatusPill({ value, kind = "work" }: StatusPillProps) {
     );
   }
 
-  const meta = workStatusMeta[String(value)] ?? { color: "gray", label: String(value ?? "—") };
+  const dictionary = kind === "operation" ? operationStatusMeta : workStatusMeta;
+  const meta = dictionary[String(value)] ?? { color: "gray", label: String(value ?? "—") };
 
   return (
     <Badge color={meta.color} radius="xl" variant="light">

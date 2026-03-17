@@ -26,7 +26,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (hasSession && isAuthPage) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/works", request.url));
   }
 
   return NextResponse.next();

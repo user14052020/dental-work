@@ -22,10 +22,13 @@ export function useWorksPage() {
   const [page, setPage] = useState(1);
   const [selectedWork, setSelectedWork] = useState<WorkCompact | null>(null);
   const [statusWork, setStatusWork] = useState<WorkCompact | null>(null);
+  const [lifecycleMode, setLifecycleMode] = useState<"close" | "reopen" | null>(null);
+  const [lifecycleWork, setLifecycleWork] = useState<WorkCompact | null>(null);
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [detailOpened, detailHandlers] = useDisclosure(false);
   const [formOpened, formHandlers] = useDisclosure(false);
   const [statusOpened, statusHandlers] = useDisclosure(false);
+  const [lifecycleOpened, lifecycleHandlers] = useDisclosure(false);
 
   useEffect(() => {
     setPage(1);
@@ -54,6 +57,9 @@ export function useWorksPage() {
     executorId,
     executorsQuery,
     formOpened,
+    lifecycleMode,
+    lifecycleOpened,
+    lifecycleWork,
     page,
     search,
     selectedWork,
@@ -89,6 +95,16 @@ export function useWorksPage() {
     closeStatus() {
       setStatusWork(null);
       statusHandlers.close();
+    },
+    openLifecycle(mode: "close" | "reopen", work: WorkCompact) {
+      setLifecycleMode(mode);
+      setLifecycleWork(work);
+      lifecycleHandlers.open();
+    },
+    closeLifecycle() {
+      setLifecycleMode(null);
+      setLifecycleWork(null);
+      lifecycleHandlers.close();
     }
   };
 }

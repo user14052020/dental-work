@@ -1,0 +1,50 @@
+import { VatMode } from "@/shared/config/vat-options";
+
+export type OrganizationProfile = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  display_name: string;
+  legal_name: string;
+  short_name?: string | null;
+  legal_address?: string | null;
+  mailing_address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  inn?: string | null;
+  kpp?: string | null;
+  ogrn?: string | null;
+  bank_name?: string | null;
+  bik?: string | null;
+  settlement_account?: string | null;
+  correspondent_account?: string | null;
+  recipient_name?: string | null;
+  director_name?: string | null;
+  accountant_name?: string | null;
+  vat_mode: VatMode;
+  vat_label: string;
+  vat_rate_percent?: string | number | null;
+  comment?: string | null;
+};
+
+export type OrganizationProfilePayload = {
+  display_name: string;
+  legal_name: string;
+  short_name?: string;
+  legal_address?: string;
+  mailing_address?: string;
+  phone?: string;
+  email?: string;
+  inn?: string;
+  kpp?: string;
+  ogrn?: string;
+  bank_name?: string;
+  bik?: string;
+  settlement_account?: string;
+  correspondent_account?: string;
+  recipient_name?: string;
+  director_name?: string;
+  accountant_name?: string;
+  vat_mode: VatMode;
+  comment?: string;
+};

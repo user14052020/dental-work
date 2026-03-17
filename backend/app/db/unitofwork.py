@@ -9,8 +9,12 @@ from app.db.engine import async_session_factory
 from app.modules.auth.repository import RefreshTokenRepository, UserRepository
 from app.modules.clients.repository import ClientRepository
 from app.modules.dashboard.repository import DashboardRepository
+from app.modules.doctors.repository import DoctorRepository
 from app.modules.executors.repository import ExecutorRepository
 from app.modules.materials.repository import MaterialRepository
+from app.modules.organization.repository import OrganizationRepository
+from app.modules.operations.repository import OperationRepository
+from app.modules.work_catalog.repository import WorkCatalogRepository
 from app.modules.works.repository import WorkRepository
 
 
@@ -25,7 +29,11 @@ class SQLAlchemyUnitOfWork:
         self.refresh_tokens = RefreshTokenRepository(self.session)
         self.clients = ClientRepository(self.session)
         self.executors = ExecutorRepository(self.session)
+        self.doctors = DoctorRepository(self.session)
         self.materials = MaterialRepository(self.session)
+        self.organization = OrganizationRepository(self.session)
+        self.operations = OperationRepository(self.session)
+        self.work_catalog = WorkCatalogRepository(self.session)
         self.works = WorkRepository(self.session)
         self.dashboard = DashboardRepository(self.session)
         return self

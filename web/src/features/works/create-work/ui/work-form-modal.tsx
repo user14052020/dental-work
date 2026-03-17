@@ -3,6 +3,7 @@
 import {
   ActionIcon,
   Button,
+  Checkbox,
   Divider,
   Group,
   Modal,
@@ -15,98 +16,293 @@ import {
 import { useForm } from "@mantine/form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { useEffect } from "react";
 
-import { useClientsQuery } from "@/entities/clients/model/use-clients-query";
+import { useClientDetailQuery, useClientsQuery } from "@/entities/clients/model/use-clients-query";
+import { useDoctorsQuery } from "@/entities/doctors/model/use-doctors-query";
 import { useExecutorsQuery } from "@/entities/executors/model/use-executors-query";
+import {
+  OperationCatalog,
+  WorkOperationCreatePayload
+} from "@/entities/operations/model/types";
+import { useOperationsQuery } from "@/entities/operations/model/use-operations-query";
 import { formatMaterialUnit } from "@/entities/materials/model/material-units";
 import { useMaterialsQuery } from "@/entities/materials/model/use-materials-query";
+import { useWorkCatalogQuery } from "@/entities/work-catalog/model/use-work-catalog-query";
 import { createWork } from "@/entities/works/api/works-api";
 import { worksQueryKeys } from "@/entities/works/model/query-keys";
-import { workStatusOptions } from "@/entities/works/model/types";
+import {
+  faceShapeOptions,
+  patientGenderOptions,
+  WorkItemInput,
+  workStatusOptions
+} from "@/entities/works/model/types";
+import { formatToothSelectionSummary, ToothSelectionItem } from "@/entities/works/model/tooth-selection";
+import { Odontogram } from "@/entities/works/ui/odontogram";
+import { formatCurrency } from "@/shared/lib/formatters/format-currency";
 import { toDateTimeLocal, toIsoDateTime } from "@/shared/lib/formatters/format-date";
 import { showErrorNotification } from "@/shared/lib/notifications/show-error";
 import { showSuccessNotification } from "@/shared/lib/notifications/show-success";
+
+const priceFieldStyles = {
+  label: {
+    display: "block",
+    minHeight: "3.5rem"
+  }
+} as const;
 
 type MaterialLine = {
   material_id: string;
   quantity: string;
 };
 
+type WorkOperationLine = {
+  operation_id: string;
+  executor_id: string;
+  quantity: string;
+  unit_labor_cost_override: string;
+  note: string;
+};
+
+type WorkItemLine = {
+  work_catalog_item_id: string;
+  work_type: string;
+  description: string;
+  quantity: string;
+  unit_price: string;
+};
+
 type WorkFormValues = {
   order_number: string;
   client_id: string;
   executor_id: string;
+  doctor_id: string;
+  work_catalog_item_id: string;
   work_type: string;
   description: string;
+  doctor_name: string;
+  doctor_phone: string;
+  patient_name: string;
+  patient_age: string;
+  patient_gender: string;
+  require_color_photo: boolean;
+  face_shape: string;
+  implant_system: string;
+  metal_type: string;
+  shade_color: string;
+  tooth_formula: string;
+  tooth_selection: ToothSelectionItem[];
   status: string;
   received_at: string;
   deadline_at: string;
+  base_price_for_client: string;
+  price_adjustment_percent: string;
   price_for_client: string;
   additional_expenses: string;
   labor_hours: string;
   amount_paid: string;
-  comment: string;
+  work_items: WorkItemLine[];
+  operations: WorkOperationLine[];
   materials: MaterialLine[];
 };
 
-const emptyValues: WorkFormValues = {
-  order_number: "",
-  client_id: "",
-  executor_id: "",
-  work_type: "",
-  description: "",
-  status: "new",
-  received_at: toDateTimeLocal(new Date().toISOString()),
-  deadline_at: "",
-  price_for_client: "0",
-  additional_expenses: "0",
-  labor_hours: "0",
-  amount_paid: "0",
-  comment: "",
-  materials: []
-};
+function buildEmptyValues(): WorkFormValues {
+  return {
+    order_number: "",
+    client_id: "",
+    executor_id: "",
+    doctor_id: "",
+    work_catalog_item_id: "",
+    work_type: "",
+    description: "",
+    doctor_name: "",
+    doctor_phone: "",
+    patient_name: "",
+    patient_age: "",
+    patient_gender: "",
+    require_color_photo: false,
+    face_shape: "",
+    implant_system: "",
+    metal_type: "",
+    shade_color: "",
+    tooth_formula: "",
+    tooth_selection: [],
+    status: "new",
+    received_at: toDateTimeLocal(new Date().toISOString()),
+    deadline_at: "",
+    base_price_for_client: "0",
+    price_adjustment_percent: "0",
+    price_for_client: "0",
+    additional_expenses: "0",
+    labor_hours: "0",
+    amount_paid: "0",
+    work_items: [],
+    operations: [],
+    materials: []
+  };
+}
 
 type WorkFormModalProps = {
   opened: boolean;
   onClose: () => void;
 };
 
+function calculateFinalPrice(basePrice: string, adjustmentPercent: string) {
+  const base = Number(basePrice || 0);
+  const adjustment = Number(adjustmentPercent || 0);
+  const total = base * (1 + adjustment / 100);
+  return Number.isFinite(total) ? total.toFixed(2) : "0.00";
+}
+
+function getResolvedOperationRate(
+  operation: OperationCatalog | undefined,
+  categoryId: string | undefined,
+  override: string
+) {
+  if (override.trim() !== "") {
+    return Number(override || 0);
+  }
+
+  if (!operation || !categoryId) {
+    return 0;
+  }
+
+  const matchedRate = operation.rates.find((rate) => rate.executor_category_id === categoryId);
+  return Number(matchedRate?.labor_rate ?? 0);
+}
+
+function buildOperationPayload(lines: WorkOperationLine[]): WorkOperationCreatePayload[] {
+  return lines
+    .filter((line) => line.operation_id && Number(line.quantity || 0) > 0)
+    .map((line) => ({
+      operation_id: line.operation_id,
+      quantity: line.quantity || "1",
+      ...(line.executor_id ? { executor_id: line.executor_id } : {}),
+      ...(line.unit_labor_cost_override.trim()
+        ? { unit_labor_cost_override: line.unit_labor_cost_override.trim() }
+        : {}),
+      ...(line.note.trim() ? { note: line.note.trim() } : {})
+    }));
+}
+
+function resolveCatalogPrice(clientDetail: { work_catalog_prices: Array<{ work_catalog_item_id: string; price: string }> } | undefined, catalogItemId: string, fallbackPrice: string) {
+  const matchedPrice = clientDetail?.work_catalog_prices.find((item) => item.work_catalog_item_id === catalogItemId);
+  return {
+    hasClientPrice: Boolean(matchedPrice),
+    price: matchedPrice?.price ?? fallbackPrice
+  };
+}
+
+function buildWorkItemsPayload(values: WorkFormValues): WorkItemInput[] | undefined {
+  const extraItems = values.work_items
+    .filter(
+      (item) =>
+        item.work_catalog_item_id ||
+        item.work_type.trim() ||
+        item.description.trim() ||
+        Number(item.quantity || 0) > 0 ||
+        Number(item.unit_price || 0) > 0
+    )
+    .map((item) => ({
+      ...(item.work_catalog_item_id ? { work_catalog_item_id: item.work_catalog_item_id } : {}),
+      ...(item.work_type.trim() ? { work_type: item.work_type.trim() } : {}),
+      ...(item.description.trim() ? { description: item.description.trim() } : {}),
+      quantity: item.quantity || "1",
+      ...(item.unit_price.trim() ? { unit_price: item.unit_price.trim() } : {})
+    }));
+
+  if (!extraItems.length) {
+    return undefined;
+  }
+
+  return [
+    {
+      ...(values.work_catalog_item_id ? { work_catalog_item_id: values.work_catalog_item_id } : {}),
+      ...(values.work_type.trim() ? { work_type: values.work_type.trim() } : {}),
+      ...(values.description.trim() ? { description: values.description.trim() } : {}),
+      quantity: "1",
+      unit_price: calculateFinalPrice(values.base_price_for_client, values.price_adjustment_percent)
+    },
+    ...extraItems
+  ];
+}
+
 export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
   const queryClient = useQueryClient();
   const clientsQuery = useClientsQuery({ page: 1, page_size: 100 });
   const executorsQuery = useExecutorsQuery({ page: 1, page_size: 100 });
+  const workCatalogQuery = useWorkCatalogQuery({ page: 1, page_size: 200, active_only: true });
+  const operationsQuery = useOperationsQuery({ page: 1, page_size: 100, active_only: true });
   const materialsQuery = useMaterialsQuery({ page: 1, page_size: 100 });
   const form = useForm<WorkFormValues>({
-    initialValues: emptyValues,
+    initialValues: buildEmptyValues(),
     validate: {
       order_number: (value) => (value.trim().length >= 1 ? null : "Укажите номер заказа."),
       client_id: (value) => (value ? null : "Выберите клиента."),
       work_type: (value) => (value.trim().length >= 1 ? null : "Укажите тип работы.")
     }
   });
+  const selectedClientDetailQuery = useClientDetailQuery(form.values.client_id || undefined);
+  const doctorsQuery = useDoctorsQuery({
+    page: 1,
+    page_size: 100,
+    active_only: true,
+    ...(form.values.client_id ? { client_id: form.values.client_id } : {})
+  });
+
+  const clients = clientsQuery.data?.items ?? [];
+  const doctors = doctorsQuery.data?.items ?? [];
+  const executors = executorsQuery.data?.items ?? [];
+  const operations = operationsQuery.data?.items ?? [];
+  const workCatalogItems = workCatalogQuery.data?.items;
+  const clientsById = new Map(clients.map((client) => [client.id, client]));
+  const doctorsById = new Map(doctors.map((doctor) => [doctor.id, doctor]));
+  const executorsById = new Map(executors.map((executor) => [executor.id, executor]));
+  const operationsById = new Map(operations.map((operation) => [operation.id, operation]));
+  const workCatalogById = new Map((workCatalogItems ?? []).map((item) => [item.id, item]));
 
   const mutation = useMutation({
-    mutationFn: () =>
-      createWork({
+    mutationFn: () => {
+      const workItemsPayload = buildWorkItemsPayload(form.values);
+
+      return createWork({
         order_number: form.values.order_number,
         client_id: form.values.client_id,
         executor_id: form.values.executor_id || undefined,
+        doctor_id: form.values.doctor_id || undefined,
+        work_catalog_item_id: form.values.work_catalog_item_id || undefined,
         work_type: form.values.work_type,
         description: form.values.description || undefined,
+        doctor_name: form.values.doctor_name || undefined,
+        doctor_phone: form.values.doctor_phone || undefined,
+        patient_name: form.values.patient_name || undefined,
+        patient_age: form.values.patient_age ? Number(form.values.patient_age) : undefined,
+        patient_gender: form.values.patient_gender || undefined,
+        require_color_photo: form.values.require_color_photo,
+        face_shape: form.values.face_shape || undefined,
+        implant_system: form.values.implant_system || undefined,
+        metal_type: form.values.metal_type || undefined,
+        shade_color: form.values.shade_color || undefined,
+        tooth_formula: form.values.tooth_formula || undefined,
+        tooth_selection: form.values.tooth_selection,
         status: form.values.status as never,
         received_at: toIsoDateTime(form.values.received_at) as string,
         deadline_at: toIsoDateTime(form.values.deadline_at),
-        price_for_client: form.values.price_for_client,
+        base_price_for_client: form.values.base_price_for_client,
+        price_adjustment_percent: form.values.price_adjustment_percent,
+        price_for_client: calculateFinalPrice(form.values.base_price_for_client, form.values.price_adjustment_percent),
         additional_expenses: form.values.additional_expenses,
         labor_hours: form.values.labor_hours,
         amount_paid: form.values.amount_paid,
-        comment: form.values.comment || undefined,
+        ...(workItemsPayload ? { work_items: workItemsPayload } : {}),
+        operations: buildOperationPayload(form.values.operations),
         materials: form.values.materials.filter((item) => item.material_id && Number(item.quantity) > 0)
-      }),
+      });
+    },
     onSuccess() {
       queryClient.invalidateQueries({ queryKey: worksQueryKeys.root });
       showSuccessNotification("Работа создана.");
-      form.setValues(emptyValues);
+      form.setValues(buildEmptyValues());
       onClose();
     },
     onError(error) {
@@ -119,35 +315,138 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
       value: material.id,
       label: `${material.name} · ${formatMaterialUnit(material.unit)}`
     })) ?? [];
+  const executorOptions = executors.map((executor) => ({
+    value: executor.id,
+    label: executor.payment_category_name
+      ? `${executor.full_name} · ${executor.payment_category_name}`
+      : executor.full_name
+  }));
+  const doctorOptions = doctors.map((doctor) => ({
+    value: doctor.id,
+    label: doctor.specialization ? `${doctor.full_name} · ${doctor.specialization}` : doctor.full_name
+  }));
+  const operationOptions = operations.map((operation) => ({
+    value: operation.id,
+    label: `${operation.code} · ${operation.name}`
+  }));
+  const workCatalogOptions = (workCatalogItems ?? []).map((item) => ({
+    value: item.id,
+    label: `${item.code} · ${item.name}`
+  }));
+  const finalPrice = calculateFinalPrice(form.values.base_price_for_client, form.values.price_adjustment_percent);
+
+  const operationLinesPreview = form.values.operations.map((line) => {
+    const operation = operationsById.get(line.operation_id);
+    const resolvedExecutor = executorsById.get(line.executor_id || form.values.executor_id);
+    const resolvedRate = getResolvedOperationRate(
+      operation,
+      resolvedExecutor?.payment_category_id ?? undefined,
+      line.unit_labor_cost_override
+    );
+    const quantity = Number(line.quantity || operation?.default_quantity || 0);
+    return {
+      operation,
+      resolvedExecutor,
+      resolvedRate,
+      total: resolvedRate * quantity
+    };
+  });
+
+  const calculatedOperationsLabor = operationLinesPreview.reduce((sum, line) => sum + line.total, 0);
+  const selectedClient = clientsById.get(form.values.client_id);
+
+  useEffect(() => {
+    const catalogItemId = form.values.work_catalog_item_id;
+    if (!catalogItemId) {
+      return;
+    }
+
+    const catalogItem = workCatalogItems?.find((item) => item.id === catalogItemId);
+    if (!catalogItem) {
+      return;
+    }
+
+    const resolvedPrice = resolveCatalogPrice(
+      selectedClientDetailQuery.data,
+      catalogItem.id,
+      catalogItem.base_price
+    );
+    const nextAdjustment = resolvedPrice.hasClientPrice
+      ? "0"
+      : (selectedClient?.default_price_adjustment_percent ?? "0");
+
+    if (form.values.base_price_for_client !== resolvedPrice.price) {
+      form.setFieldValue("base_price_for_client", resolvedPrice.price);
+    }
+    if (form.values.price_adjustment_percent !== nextAdjustment) {
+      form.setFieldValue("price_adjustment_percent", nextAdjustment);
+    }
+  }, [
+    form,
+    form.values.base_price_for_client,
+    form.values.client_id,
+    form.values.price_adjustment_percent,
+    form.values.work_catalog_item_id,
+    selectedClient,
+    selectedClientDetailQuery.data,
+    workCatalogItems
+  ]);
 
   return (
     <Modal opened={opened} onClose={onClose} size="xl" title="Новая работа">
-      <form
-        onSubmit={form.onSubmit(() => {
-          mutation.mutate();
-        })}
-      >
+      <form onSubmit={form.onSubmit(() => mutation.mutate())}>
         <Stack gap="md">
-          <Group grow>
+          <div className="grid gap-3 md:grid-cols-3">
             <TextInput label="Номер заказа" {...form.getInputProps("order_number")} />
-            <TextInput label="Тип работы" {...form.getInputProps("work_type")} />
-          </Group>
-          <Group grow align="start">
             <Select
-              data={clientsQuery.data?.items.map((client) => ({ value: client.id, label: client.name })) ?? []}
+              data={workCatalogOptions}
+              label="Позиция каталога"
+              placeholder="Выберите работу из каталога"
+              searchable
+              value={form.values.work_catalog_item_id || null}
+              onChange={(value) => {
+                const nextItem = workCatalogById.get(value ?? "");
+                form.setFieldValue("work_catalog_item_id", value ?? "");
+                if (!nextItem) {
+                  return;
+                }
+
+                form.setFieldValue("work_type", nextItem.name);
+                form.setFieldValue("description", nextItem.description ?? "");
+                form.setFieldValue("labor_hours", nextItem.default_duration_hours);
+                form.setFieldValue(
+                  "operations",
+                  nextItem.default_operations.map((operation) => ({
+                    operation_id: operation.operation_id,
+                    executor_id: "",
+                    quantity: operation.quantity,
+                    unit_labor_cost_override: "",
+                    note: operation.note ?? ""
+                  }))
+                );
+              }}
+            />
+            <TextInput label="Тип работы" {...form.getInputProps("work_type")} />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <Select
+              data={clients.map((client) => ({ value: client.id, label: client.name }))}
               label="Клиент"
               placeholder="Выберите клиента"
               value={form.values.client_id || null}
-              onChange={(value) => form.setFieldValue("client_id", value ?? "")}
+              onChange={(value) => {
+                const nextClient = clients.find((client) => client.id === value);
+                form.setFieldValue("client_id", value ?? "");
+                form.setFieldValue("doctor_id", "");
+                if (nextClient) {
+                  form.setFieldValue("price_adjustment_percent", nextClient.default_price_adjustment_percent);
+                }
+              }}
             />
             <Select
-              data={
-                executorsQuery.data?.items.map((executor) => ({
-                  value: executor.id,
-                  label: executor.full_name
-                })) ?? []
-              }
-              label="Исполнитель"
+              data={executorOptions}
+              label="Ответственный исполнитель"
               placeholder="Опционально"
               value={form.values.executor_id || null}
               onChange={(value) => form.setFieldValue("executor_id", value ?? "")}
@@ -158,19 +457,363 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
               value={form.values.status}
               onChange={(value) => form.setFieldValue("status", value ?? "new")}
             />
-          </Group>
-          <Group grow>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <Select
+              clearable
+              data={doctorOptions}
+              label="Врач из справочника"
+              placeholder={form.values.client_id ? "Выберите врача клиента" : "Сначала выберите клиента"}
+              searchable
+              value={form.values.doctor_id || null}
+              onChange={(value) => {
+                const nextDoctor = doctorsById.get(value ?? "");
+                form.setFieldValue("doctor_id", value ?? "");
+                if (nextDoctor) {
+                  form.setFieldValue("doctor_name", nextDoctor.full_name);
+                  form.setFieldValue("doctor_phone", nextDoctor.phone ?? "");
+                }
+              }}
+            />
+            <TextInput label="ФИО врача" placeholder="Опционально" {...form.getInputProps("doctor_name")} />
+            <TextInput label="Телефон врача" placeholder="Опционально" {...form.getInputProps("doctor_phone")} />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <TextInput label="Пациент" placeholder="Опционально" {...form.getInputProps("patient_name")} />
+            <div />
+            <div />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <TextInput label="Возраст пациента" type="number" {...form.getInputProps("patient_age")} />
+            <Select
+              clearable
+              data={patientGenderOptions}
+              label="Пол пациента"
+              value={form.values.patient_gender || null}
+              onChange={(value) => form.setFieldValue("patient_gender", value ?? "")}
+            />
+            <Select
+              clearable
+              data={faceShapeOptions}
+              label="Форма лица"
+              value={form.values.face_shape || null}
+              onChange={(value) => form.setFieldValue("face_shape", value ?? "")}
+            />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <TextInput label="Система имплантов" {...form.getInputProps("implant_system")} />
+            <TextInput label="Металл" {...form.getInputProps("metal_type")} />
+            <TextInput label="Цвет" {...form.getInputProps("shade_color")} />
+          </div>
+
+          <Checkbox
+            label="Нужна отметка о фотоаппарате для определения цвета"
+            {...form.getInputProps("require_color_photo", { type: "checkbox" })}
+          />
+
+          <Stack gap="xs">
+            <Group justify="space-between" gap="sm" wrap="wrap">
+              <Text fw={700}>Графическая зубная формула</Text>
+              <Text c="dimmed" size="sm">
+                {form.values.tooth_selection.length
+                  ? `${form.values.tooth_selection.length} зуб(ов) отмечено`
+                  : "Выбери зубы на схеме"}
+              </Text>
+            </Group>
+            <Odontogram
+              value={form.values.tooth_selection}
+              onChange={(value) => {
+                form.setFieldValue("tooth_selection", value);
+                form.setFieldValue("tooth_formula", formatToothSelectionSummary(value));
+              }}
+            />
+            <TextInput
+              label="Сводка по формуле"
+              placeholder="Формула сформируется автоматически"
+              readOnly
+              value={form.values.tooth_formula}
+            />
+          </Stack>
+
+          <div className="grid gap-3 md:grid-cols-2">
             <TextInput label="Дата приема" type="datetime-local" {...form.getInputProps("received_at")} />
             <TextInput label="Дедлайн" type="datetime-local" {...form.getInputProps("deadline_at")} />
-          </Group>
-          <Group grow>
-            <TextInput label="Цена для клиента" type="number" {...form.getInputProps("price_for_client")} />
-            <TextInput label="Трудозатраты, часы" type="number" {...form.getInputProps("labor_hours")} />
-            <TextInput label="Доп. расходы" type="number" {...form.getInputProps("additional_expenses")} />
-            <TextInput label="Оплачено" type="number" {...form.getInputProps("amount_paid")} />
-          </Group>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <TextInput
+              label="Базовая цена"
+              styles={priceFieldStyles}
+              type="number"
+              {...form.getInputProps("base_price_for_client")}
+            />
+            <div className="flex flex-col gap-1">
+              <TextInput
+                label="Скидка / надбавка, %"
+                styles={priceFieldStyles}
+                type="number"
+                {...form.getInputProps("price_adjustment_percent")}
+              />
+              <Text c="dimmed" lh={1.3} size="xs">
+                Отрицательное значение уменьшает стоимость.
+              </Text>
+            </div>
+            <TextInput label="Итоговая цена клиенту" readOnly styles={priceFieldStyles} value={finalPrice} />
+            <TextInput
+              label="Трудозатраты, часы"
+              styles={priceFieldStyles}
+              type="number"
+              {...form.getInputProps("labor_hours")}
+            />
+            <TextInput
+              label="Доп. расходы"
+              styles={priceFieldStyles}
+              type="number"
+              {...form.getInputProps("additional_expenses")}
+            />
+            <TextInput
+              label="Оплачено"
+              styles={priceFieldStyles}
+              type="number"
+              {...form.getInputProps("amount_paid")}
+            />
+          </div>
+          <Text c="dimmed" size="sm">
+            Ручные трудозатраты по часам используются только если операции ниже не заполнены.
+          </Text>
           <Textarea label="Описание" minRows={3} {...form.getInputProps("description")} />
-          <Textarea label="Комментарий" minRows={2} {...form.getInputProps("comment")} />
+
+          <Divider />
+          <Stack gap="sm">
+            <Group justify="space-between" align="start">
+              <div>
+                <Text fw={700}>Дополнительные позиции заказа</Text>
+                <Text c="dimmed" size="sm">
+                  Основная позиция берется из верхних полей. Ниже можно добавить еще строки в тот же заказ.
+                </Text>
+              </div>
+              <Button
+                leftSection={<IconPlus size={16} />}
+                type="button"
+                variant="light"
+                onClick={() =>
+                  form.insertListItem("work_items", {
+                    work_catalog_item_id: "",
+                    work_type: "",
+                    description: "",
+                    quantity: "1",
+                    unit_price: ""
+                  })
+                }
+              >
+                Добавить позицию
+              </Button>
+            </Group>
+
+            {form.values.work_items.length ? (
+              <Stack gap="sm">
+                {form.values.work_items.map((item, index) => (
+                  <div key={`work-item-${index}`} className="rounded-[20px] bg-slate-50 px-4 py-4">
+                    <div className="grid gap-3 md:grid-cols-[1.4fr_1fr_.7fr_.8fr_auto] md:items-end">
+                      <Select
+                        data={workCatalogOptions}
+                        label={`Позиция ${index + 2}`}
+                        placeholder="Выберите работу из каталога"
+                        searchable
+                        value={item.work_catalog_item_id || null}
+                        onChange={(value) => {
+                          const nextItem = workCatalogById.get(value ?? "");
+                          form.setFieldValue(`work_items.${index}.work_catalog_item_id`, value ?? "");
+                          if (!nextItem) {
+                            return;
+                          }
+                          const resolvedPrice = resolveCatalogPrice(
+                            selectedClientDetailQuery.data,
+                            nextItem.id,
+                            nextItem.base_price
+                          );
+                          form.setFieldValue(`work_items.${index}.work_type`, nextItem.name);
+                          form.setFieldValue(`work_items.${index}.description`, nextItem.description ?? "");
+                          form.setFieldValue(`work_items.${index}.unit_price`, resolvedPrice.price);
+                        }}
+                      />
+                      <TextInput
+                        label="Наименование"
+                        value={item.work_type}
+                        onChange={(event) =>
+                          form.setFieldValue(`work_items.${index}.work_type`, event.currentTarget.value)
+                        }
+                      />
+                      <TextInput
+                        label="Кол-во"
+                        type="number"
+                        value={item.quantity}
+                        onChange={(event) =>
+                          form.setFieldValue(`work_items.${index}.quantity`, event.currentTarget.value)
+                        }
+                      />
+                      <TextInput
+                        label="Цена за ед."
+                        type="number"
+                        value={item.unit_price}
+                        onChange={(event) =>
+                          form.setFieldValue(`work_items.${index}.unit_price`, event.currentTarget.value)
+                        }
+                      />
+                      <ActionIcon
+                        color="red"
+                        mb={4}
+                        mt="auto"
+                        size="lg"
+                        variant="light"
+                        onClick={() => form.removeListItem("work_items", index)}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </div>
+                    <Textarea
+                      className="mt-3"
+                      label="Описание позиции"
+                      minRows={2}
+                      value={item.description}
+                      onChange={(event) =>
+                        form.setFieldValue(`work_items.${index}.description`, event.currentTarget.value)
+                      }
+                    />
+                    <Text c="dimmed" mt="sm" size="sm">
+                      Итог по строке:{" "}
+                      {formatCurrency((Number(item.quantity || 0) || 0) * (Number(item.unit_price || 0) || 0))}
+                    </Text>
+                  </div>
+                ))}
+              </Stack>
+            ) : (
+              <Text c="dimmed" size="sm">
+                Заказ можно оставить однострочным, а дополнительные позиции добавить позже.
+              </Text>
+            )}
+          </Stack>
+
+          <Divider />
+          <Stack gap="sm">
+            <Group justify="space-between" align="start">
+              <div>
+                <Text fw={700}>Операции в работе</Text>
+                <Text c="dimmed" size="sm">
+                  Подбирай операции из каталога. Если у исполнителя назначена категория оплаты, ставка подставится автоматически.
+                </Text>
+              </div>
+              <Button
+                leftSection={<IconPlus size={16} />}
+                type="button"
+                variant="light"
+                onClick={() =>
+                  form.insertListItem("operations", {
+                    operation_id: "",
+                    executor_id: "",
+                    quantity: "1",
+                    unit_labor_cost_override: "",
+                    note: ""
+                  })
+                }
+              >
+                Добавить операцию
+              </Button>
+            </Group>
+
+            {form.values.operations.length ? (
+              <>
+                <Text fw={600} size="sm">
+                  Предварительная оплата технику: {formatCurrency(calculatedOperationsLabor)}
+                </Text>
+                <Stack gap="sm">
+                  {form.values.operations.map((line, index) => {
+                    const preview = operationLinesPreview[index];
+                    const currentOperation = preview?.operation;
+
+                    return (
+                      <div key={`${line.operation_id}-${index}`} className="rounded-[20px] bg-slate-50 px-4 py-4">
+                        <div className="grid gap-3 md:grid-cols-[1.4fr_1.2fr_.8fr_1fr_auto] md:items-end">
+                          <Select
+                            data={operationOptions}
+                            label={`Операция ${index + 1}`}
+                            placeholder="Выберите операцию"
+                            value={line.operation_id || null}
+                            onChange={(value) => {
+                              const nextOperation = operationsById.get(value ?? "");
+                              form.setFieldValue(`operations.${index}.operation_id`, value ?? "");
+                              form.setFieldValue(`operations.${index}.quantity`, nextOperation?.default_quantity ?? "1");
+                              if (!form.values.work_type.trim() && nextOperation) {
+                                form.setFieldValue("work_type", nextOperation.name);
+                              }
+                            }}
+                          />
+                          <Select
+                            clearable
+                            data={executorOptions}
+                            label="Исполнитель операции"
+                            placeholder={form.values.executor_id ? "По умолчанию из заказа" : "Опционально"}
+                            value={line.executor_id || null}
+                            onChange={(value) => form.setFieldValue(`operations.${index}.executor_id`, value ?? "")}
+                          />
+                          <TextInput
+                            label="Количество"
+                            type="number"
+                            value={line.quantity}
+                            onChange={(event) => form.setFieldValue(`operations.${index}.quantity`, event.currentTarget.value)}
+                          />
+                          <TextInput
+                            label="Ручная ставка"
+                            placeholder="Авто"
+                            type="number"
+                            value={line.unit_labor_cost_override}
+                            onChange={(event) =>
+                              form.setFieldValue(`operations.${index}.unit_labor_cost_override`, event.currentTarget.value)
+                            }
+                          />
+                          <ActionIcon
+                            color="red"
+                            mb={4}
+                            mt="auto"
+                            size="lg"
+                            variant="light"
+                            onClick={() => form.removeListItem("operations", index)}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </div>
+                        <Textarea
+                          className="mt-3"
+                          label="Примечание по операции"
+                          minRows={2}
+                          value={line.note}
+                          onChange={(event) => form.setFieldValue(`operations.${index}.note`, event.currentTarget.value)}
+                        />
+                        <Text c="dimmed" mt="sm" size="sm">
+                          {currentOperation ? (
+                            <>
+                              Категория оплаты: {preview?.resolvedExecutor?.payment_category_name ?? "не назначена"} · ставка{" "}
+                              {formatCurrency(preview?.resolvedRate ?? 0)} · итог {formatCurrency(preview?.total ?? 0)}
+                            </>
+                          ) : (
+                            "Выберите операцию из каталога, чтобы увидеть расчет ставки."
+                          )}
+                        </Text>
+                      </div>
+                    );
+                  })}
+                </Stack>
+              </>
+            ) : (
+              <Text c="dimmed" size="sm">
+                Если добавить операции сейчас, работа сразу получит детализацию по этапам и автоматический расчет оплаты технику.
+              </Text>
+            )}
+          </Stack>
 
           <Divider />
           <Group justify="space-between">
@@ -200,9 +843,7 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
                     label="Количество"
                     type="number"
                     value={line.quantity}
-                    onChange={(event) =>
-                      form.setFieldValue(`materials.${index}.quantity`, event.currentTarget.value)
-                    }
+                    onChange={(event) => form.setFieldValue(`materials.${index}.quantity`, event.currentTarget.value)}
                   />
                   <ActionIcon
                     color="red"

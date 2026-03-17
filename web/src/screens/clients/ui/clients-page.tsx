@@ -2,6 +2,7 @@
 
 import { ClientDetailDrawer } from "@/features/clients/view-client/ui/client-detail-drawer";
 import { ClientFormModal } from "@/features/clients/upsert-client/ui/client-form-modal";
+import { openAfterDrawerClose } from "@/shared/lib/ui/open-after-drawer-close";
 import { PageHeading } from "@/shared/ui/page-heading";
 import { ClientsToolbar } from "@/widgets/clients-panel/ui/clients-toolbar";
 import { ClientsTable } from "@/widgets/clients-panel/ui/clients-table";
@@ -35,8 +36,10 @@ export function ClientsPage() {
         opened={page.detailOpened}
         onClose={page.closeDetail}
         onEdit={() => {
-          if (page.selectedClient) {
-            page.openEdit(page.selectedClient);
+          const client = page.selectedClient;
+          if (client) {
+            page.closeDetail();
+            openAfterDrawerClose(() => page.openEdit(client));
           }
         }}
       />

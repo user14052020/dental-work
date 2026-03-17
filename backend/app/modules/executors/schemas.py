@@ -18,6 +18,7 @@ class ExecutorCreate(BaseSchema):
     phone: Optional[PhoneString] = None
     email: Optional[EmailStr] = None
     specialization: Optional[NameString] = None
+    payment_category_id: Optional[str] = None
     hourly_rate: Decimal
     comment: CommentString = None
     is_active: bool = True
@@ -28,6 +29,7 @@ class ExecutorUpdate(BaseSchema):
     phone: Optional[PhoneString] = None
     email: Optional[EmailStr] = None
     specialization: Optional[NameString] = None
+    payment_category_id: Optional[str] = None
     hourly_rate: Optional[Decimal] = None
     comment: CommentString = None
     is_active: Optional[bool] = None
@@ -38,11 +40,15 @@ class ExecutorRead(TimestampedReadSchema):
     phone: Optional[str]
     email: Optional[EmailStr]
     specialization: Optional[str]
+    payment_category_id: Optional[str]
+    payment_category_name: Optional[str] = None
     hourly_rate: Decimal
     comment: Optional[str]
     is_active: bool
     work_count: int = 0
     production_total: Decimal = Decimal("0.00")
+    earnings_total: Decimal = Decimal("0.00")
+    earnings_current_month: Decimal = Decimal("0.00")
 
 
 class ExecutorListResponse(PaginatedResponse[ExecutorRead]):

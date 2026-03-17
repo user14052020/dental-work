@@ -22,3 +22,35 @@ class MaterialUnit(StrEnum):
     PIECE = "piece"
     PACK = "pack"
     HOUR = "hour"
+
+
+class ToothSelectionState(StrEnum):
+    TARGET = "target"
+    MISSING = "missing"
+
+
+class ToothSurface(StrEnum):
+    MESIAL = "mesial"
+    DISTAL = "distal"
+    VESTIBULAR = "vestibular"
+    ORAL = "oral"
+    OCCLUSAL = "occlusal"
+    INCISAL = "incisal"
+
+
+class OperationExecutionStatus(StrEnum):
+    PLANNED = "planned"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class PatientGender(StrEnum):
+    MALE = "male"
+    FEMALE = "female"
+
+
+class FaceShape(StrEnum):
+    SQUARE = "square"
+    OVAL = "oval"
+    TRIANGLE = "triangle"

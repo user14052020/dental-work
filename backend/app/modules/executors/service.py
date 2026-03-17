@@ -35,9 +35,15 @@ class ExecutorService:
             )
             items = [
                 ExecutorRead.model_validate(executor).model_copy(
-                    update={"work_count": work_count, "production_total": production_total},
+                    update={
+                        "payment_category_name": executor.payment_category.name if executor.payment_category else None,
+                        "work_count": work_count,
+                        "production_total": production_total,
+                        "earnings_total": earnings_total,
+                        "earnings_current_month": earnings_current_month,
+                    },
                 )
-                for executor, work_count, production_total in rows
+                for executor, work_count, production_total, earnings_total, earnings_current_month in rows
             ]
         return PaginatedResponse[ExecutorRead].create(
             items, page=page, page_size=page_size, total_items=total_items
@@ -45,18 +51,27 @@ class ExecutorService:
 
     async def get_executor(self, executor_id: str) -> ExecutorRead:
         async with self._uow as uow:
-            executor = await uow.executors.get(executor_id)
-            if executor is None:
+            rows, _ = await uow.executors.list(page=1, page_size=1, ids=[executor_id])
+            if not rows:
                 raise NotFoundError("executor", executor_id)
-            return ExecutorRead.model_validate(executor)
+            executor, work_count, production_total, earnings_total, earnings_current_month = rows[0]
+            return ExecutorRead.model_validate(executor).model_copy(
+                update={
+                    "payment_category_name": executor.payment_category.name if executor.payment_category else None,
+                    "work_count": work_count,
+                    "production_total": production_total,
+                    "earnings_total": earnings_total,
+                    "earnings_current_month": earnings_current_month,
+                }
+            )
 
     async def create_executor(self, payload: ExecutorCreate) -> ExecutorRead:
         async with self._uow as uow:
             executor = await uow.executors.add(Executor(**payload.model_dump()))
             await uow.commit()
-        await self._index_executor(executor)
+        await self._index_executor(executor.id)
         await self._cache.invalidate_prefix("dashboard:")
-        return ExecutorRead.model_validate(executor)
+        return await self.get_executor(executor.id)
 
     async def update_executor(self, executor_id: str, payload: ExecutorUpdate) -> ExecutorRead:
         async with self._uow as uow:
@@ -66,14 +81,18 @@ class ExecutorService:
             for field, value in payload.model_dump(exclude_unset=True).items():
                 setattr(executor, field, value)
             await uow.commit()
-        await self._index_executor(executor)
+        await self._index_executor(executor.id)
         await self._cache.invalidate_prefix("dashboard:")
-        return ExecutorRead.model_validate(executor)
+        return await self.get_executor(executor.id)
 
     async def archive_executor(self, executor_id: str) -> ExecutorRead:
         return await self.update_executor(executor_id, ExecutorUpdate(is_active=False))
 
-    async def _index_executor(self, executor: Executor) -> None:
+    async def _index_executor(self, executor_id: str) -> None:
+        async with self._uow as uow:
+            executor = await uow.executors.get(executor_id)
+            if executor is None:
+                return
         await self._search.index_document(
             settings.elasticsearch_executors_index,
             executor.id,

@@ -22,7 +22,7 @@ export function ExecutorsToolbar({
     <Group justify="space-between" className="w-full flex-col md:flex-row md:items-end">
       <SearchField
         className="w-full md:flex-1"
-        placeholder="Поиск по ФИО, телефону, эл. почте, специализации, комментарию"
+        placeholder="Поиск по ФИО, телефону, эл. почте, специализации, категории оплаты, комментарию"
         value={search}
         onChange={(event) => onSearchChange(event.currentTarget.value)}
       />

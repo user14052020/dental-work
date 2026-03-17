@@ -5,7 +5,7 @@ type Primitive = string | number | boolean | null | undefined;
 
 type RequestOptions = {
   path: string;
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   query?: Record<string, Primitive>;
 };
@@ -66,12 +66,15 @@ export async function httpClient<TResponse>({
   body,
   query
 }: RequestOptions): Promise<TResponse> {
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const response = await fetch(buildUrl(path, query), {
     method,
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: body ? JSON.stringify(body) : undefined
+    headers: isFormData
+      ? undefined
+      : {
+          "Content-Type": "application/json"
+        },
+    body: body ? (isFormData ? (body as FormData) : JSON.stringify(body)) : undefined
   });
 
   if (response.status === 204) {

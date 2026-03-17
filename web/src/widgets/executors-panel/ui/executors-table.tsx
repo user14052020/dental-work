@@ -41,6 +41,7 @@ export function ExecutorsTable({
                   <Table.Th>Специализация</Table.Th>
                   <Table.Th>Ставка</Table.Th>
                   <Table.Th>Работ</Table.Th>
+                  <Table.Th>Оплата</Table.Th>
                   <Table.Th>Статус</Table.Th>
                   <Table.Th />
                 </Table.Tr>
@@ -54,9 +55,15 @@ export function ExecutorsTable({
                         {executor.email ?? executor.phone ?? "Контакты не указаны"}
                       </Text>
                     </Table.Td>
-                    <Table.Td>{executor.specialization ?? "—"}</Table.Td>
+                    <Table.Td>
+                      <Text>{executor.specialization ?? "—"}</Text>
+                      <Text c="dimmed" size="sm">
+                        {executor.payment_category_name ?? "Категория оплаты не назначена"}
+                      </Text>
+                    </Table.Td>
                     <Table.Td>{formatCurrency(executor.hourly_rate)}</Table.Td>
                     <Table.Td>{executor.work_count}</Table.Td>
+                    <Table.Td>{formatCurrency(executor.earnings_total)}</Table.Td>
                     <Table.Td>
                       <StatusPill kind="boolean" value={executor.is_active} />
                     </Table.Td>

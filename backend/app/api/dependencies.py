@@ -15,8 +15,14 @@ from app.modules.auth.service import AuthService
 from app.modules.clients.service import ClientService
 from app.modules.cost_calculation.service import CostCalculationService
 from app.modules.dashboard.service import DashboardService
+from app.modules.delivery.service import DeliveryService
+from app.modules.doctors.service import DoctorService
 from app.modules.executors.service import ExecutorService
 from app.modules.materials.service import MaterialService
+from app.modules.organization.service import OrganizationService
+from app.modules.documents.service import DocumentService
+from app.modules.operations.service import OperationService
+from app.modules.work_catalog.service import WorkCatalogService
 from app.modules.works.service import WorkService
 
 
@@ -57,12 +63,53 @@ def get_executor_service(
     return ExecutorService(uow=uow, cache=cache, search=search)
 
 
+def get_doctor_service(
+    uow: SQLAlchemyUnitOfWork = Depends(get_uow),
+    search: SearchService = Depends(get_search_service),
+) -> DoctorService:
+    return DoctorService(uow=uow, search=search)
+
+
 def get_material_service(
     uow: SQLAlchemyUnitOfWork = Depends(get_uow),
     cache: CacheService = Depends(get_cache_service),
     search: SearchService = Depends(get_search_service),
 ) -> MaterialService:
     return MaterialService(uow=uow, cache=cache, search=search)
+
+
+def get_operation_service(
+    uow: SQLAlchemyUnitOfWork = Depends(get_uow),
+    search: SearchService = Depends(get_search_service),
+) -> OperationService:
+    return OperationService(uow=uow, search=search)
+
+
+def get_work_catalog_service(
+    uow: SQLAlchemyUnitOfWork = Depends(get_uow),
+    search: SearchService = Depends(get_search_service),
+) -> WorkCatalogService:
+    return WorkCatalogService(uow=uow, search=search)
+
+
+def get_organization_service(
+    uow: SQLAlchemyUnitOfWork = Depends(get_uow),
+) -> OrganizationService:
+    return OrganizationService(uow=uow)
+
+
+def get_document_service(
+    uow: SQLAlchemyUnitOfWork = Depends(get_uow),
+) -> DocumentService:
+    return DocumentService(uow=uow)
+
+
+def get_delivery_service(
+    uow: SQLAlchemyUnitOfWork = Depends(get_uow),
+    search: SearchService = Depends(get_search_service),
+    cache: CacheService = Depends(get_cache_service),
+) -> DeliveryService:
+    return DeliveryService(uow=uow, search=search, cache=cache)
 
 
 def get_work_service(

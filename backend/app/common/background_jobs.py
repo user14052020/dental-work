@@ -8,8 +8,11 @@ from typing import Any, Optional
 
 from app.common.search_documents import (
     build_client_search_document,
+    build_doctor_search_document,
     build_executor_search_document,
     build_material_search_document,
+    build_operation_search_document,
+    build_work_catalog_search_document,
     build_work_search_document,
 )
 from app.common.services import CacheService, SearchService
@@ -45,6 +48,11 @@ class BackgroundJobService:
             purge=True,
         )
         await self._search.prepare_index(
+            settings.elasticsearch_doctors_index,
+            SearchService.doctors_index_mappings(),
+            purge=True,
+        )
+        await self._search.prepare_index(
             settings.elasticsearch_executors_index,
             SearchService.executors_index_mappings(),
             purge=True,
@@ -55,6 +63,16 @@ class BackgroundJobService:
             purge=True,
         )
         await self._search.prepare_index(
+            settings.elasticsearch_operations_index,
+            SearchService.operations_index_mappings(),
+            purge=True,
+        )
+        await self._search.prepare_index(
+            settings.elasticsearch_work_catalog_index,
+            SearchService.work_catalog_index_mappings(),
+            purge=True,
+        )
+        await self._search.prepare_index(
             settings.elasticsearch_works_index,
             SearchService.works_index_mappings(),
             purge=True,
@@ -62,14 +80,20 @@ class BackgroundJobService:
 
         counts = {
             "clients": await self._reindex_clients(resolved_batch_size),
+            "doctors": await self._reindex_doctors(resolved_batch_size),
             "executors": await self._reindex_executors(resolved_batch_size),
             "materials": await self._reindex_materials(resolved_batch_size),
+            "operations": await self._reindex_operations(resolved_batch_size),
+            "work_catalog": await self._reindex_work_catalog(resolved_batch_size),
             "works": await self._reindex_works(resolved_batch_size),
         }
 
         await self._search.refresh_index(settings.elasticsearch_clients_index)
+        await self._search.refresh_index(settings.elasticsearch_doctors_index)
         await self._search.refresh_index(settings.elasticsearch_executors_index)
         await self._search.refresh_index(settings.elasticsearch_materials_index)
+        await self._search.refresh_index(settings.elasticsearch_operations_index)
+        await self._search.refresh_index(settings.elasticsearch_work_catalog_index)
         await self._search.refresh_index(settings.elasticsearch_works_index)
         return counts
 
@@ -101,6 +125,14 @@ class BackgroundJobService:
             build_document=lambda executor: (executor.id, build_executor_search_document(executor)),
         )
 
+    async def _reindex_doctors(self, batch_size: int) -> int:
+        return await self._reindex_entities(
+            index_name=settings.elasticsearch_doctors_index,
+            batch_size=batch_size,
+            fetch_batch=self._fetch_doctors_batch,
+            build_document=lambda doctor: (doctor.id, build_doctor_search_document(doctor)),
+        )
+
     async def _reindex_materials(self, batch_size: int) -> int:
         return await self._reindex_entities(
             index_name=settings.elasticsearch_materials_index,
@@ -115,6 +147,22 @@ class BackgroundJobService:
             batch_size=batch_size,
             fetch_batch=self._fetch_works_batch,
             build_document=lambda work: (work.id, build_work_search_document(work)),
+        )
+
+    async def _reindex_operations(self, batch_size: int) -> int:
+        return await self._reindex_entities(
+            index_name=settings.elasticsearch_operations_index,
+            batch_size=batch_size,
+            fetch_batch=self._fetch_operations_batch,
+            build_document=lambda operation: (operation.id, build_operation_search_document(operation)),
+        )
+
+    async def _reindex_work_catalog(self, batch_size: int) -> int:
+        return await self._reindex_entities(
+            index_name=settings.elasticsearch_work_catalog_index,
+            batch_size=batch_size,
+            fetch_batch=self._fetch_work_catalog_batch,
+            build_document=lambda item: (item.id, build_work_catalog_search_document(item)),
         )
 
     async def _reindex_entities(
@@ -150,6 +198,10 @@ class BackgroundJobService:
         async with self._uow_factory() as uow:
             return await uow.executors.list_for_indexing(offset=offset, limit=limit)
 
+    async def _fetch_doctors_batch(self, offset: int, limit: int) -> list[Any]:
+        async with self._uow_factory() as uow:
+            return await uow.doctors.list_for_indexing(offset=offset, limit=limit)
+
     async def _fetch_materials_batch(self, offset: int, limit: int) -> list[Any]:
         async with self._uow_factory() as uow:
             return await uow.materials.list_for_indexing(offset=offset, limit=limit)
@@ -157,6 +209,14 @@ class BackgroundJobService:
     async def _fetch_works_batch(self, offset: int, limit: int) -> list[Any]:
         async with self._uow_factory() as uow:
             return await uow.works.list_for_indexing(offset=offset, limit=limit)
+
+    async def _fetch_operations_batch(self, offset: int, limit: int) -> list[Any]:
+        async with self._uow_factory() as uow:
+            return await uow.operations.list_operations_for_indexing(offset=offset, limit=limit)
+
+    async def _fetch_work_catalog_batch(self, offset: int, limit: int) -> list[Any]:
+        async with self._uow_factory() as uow:
+            return await uow.work_catalog.list_for_indexing(offset=offset, limit=limit)
 
     def _resolve_dashboard_window(self, window: str) -> tuple[Optional[datetime], Optional[datetime]]:
         normalized = window.strip().lower()

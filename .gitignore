@@ -26,3 +26,4 @@ web/node_modules/
 web/out/
 web/.env.local
 web/.env
+storage/

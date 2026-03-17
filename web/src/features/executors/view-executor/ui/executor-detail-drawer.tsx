@@ -46,9 +46,12 @@ export function ExecutorDetailDrawer({
             items={[
               { label: "Телефон", value: detailQuery.data.phone ?? "—" },
               { label: "Эл. почта", value: detailQuery.data.email ?? "—" },
+              { label: "Категория оплаты", value: detailQuery.data.payment_category_name ?? "—" },
               { label: "Ставка / час", value: formatCurrency(detailQuery.data.hourly_rate) },
               { label: "Работ", value: String(detailQuery.data.work_count) },
               { label: "Производство", value: formatCurrency(detailQuery.data.production_total) },
+              { label: "Оплата технику", value: formatCurrency(detailQuery.data.earnings_total) },
+              { label: "За текущий месяц", value: formatCurrency(detailQuery.data.earnings_current_month) },
               { label: "Создан", value: formatDateTime(detailQuery.data.created_at) },
               { label: "Обновлен", value: formatDateTime(detailQuery.data.updated_at) },
               { label: "Комментарий", value: detailQuery.data.comment ?? "—" }

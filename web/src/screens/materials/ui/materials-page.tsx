@@ -3,6 +3,7 @@
 import { ConsumeMaterialModal } from "@/features/materials/consume-material/ui/consume-material-modal";
 import { MaterialDetailDrawer } from "@/features/materials/view-material/ui/material-detail-drawer";
 import { MaterialFormModal } from "@/features/materials/upsert-material/ui/material-form-modal";
+import { openAfterDrawerClose } from "@/shared/lib/ui/open-after-drawer-close";
 import { PageHeading } from "@/shared/ui/page-heading";
 import { MaterialsTable } from "@/widgets/materials-panel/ui/materials-table";
 import { MaterialsToolbar } from "@/widgets/materials-panel/ui/materials-toolbar";
@@ -43,13 +44,17 @@ export function MaterialsPage() {
         opened={page.detailOpened}
         onClose={page.closeDetail}
         onConsume={() => {
-          if (page.selectedMaterial) {
-            page.openConsume(page.selectedMaterial);
+          const material = page.selectedMaterial;
+          if (material) {
+            page.closeDetail();
+            openAfterDrawerClose(() => page.openConsume(material));
           }
         }}
         onEdit={() => {
-          if (page.selectedMaterial) {
-            page.openEdit(page.selectedMaterial);
+          const material = page.selectedMaterial;
+          if (material) {
+            page.closeDetail();
+            openAfterDrawerClose(() => page.openEdit(material));
           }
         }}
       />

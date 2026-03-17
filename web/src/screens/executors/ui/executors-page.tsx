@@ -2,6 +2,7 @@
 
 import { ExecutorDetailDrawer } from "@/features/executors/view-executor/ui/executor-detail-drawer";
 import { ExecutorFormModal } from "@/features/executors/upsert-executor/ui/executor-form-modal";
+import { openAfterDrawerClose } from "@/shared/lib/ui/open-after-drawer-close";
 import { PageHeading } from "@/shared/ui/page-heading";
 import { ExecutorsTable } from "@/widgets/executors-panel/ui/executors-table";
 import { ExecutorsToolbar } from "@/widgets/executors-panel/ui/executors-toolbar";
@@ -41,8 +42,10 @@ export function ExecutorsPage() {
         opened={page.detailOpened}
         onClose={page.closeDetail}
         onEdit={() => {
-          if (page.selectedExecutor) {
-            page.openEdit(page.selectedExecutor);
+          const executor = page.selectedExecutor;
+          if (executor) {
+            page.closeDetail();
+            openAfterDrawerClose(() => page.openEdit(executor));
           }
         }}
       />

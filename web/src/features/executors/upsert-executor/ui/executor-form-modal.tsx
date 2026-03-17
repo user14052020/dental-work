@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Checkbox, Group, Modal, Stack, Textarea, TextInput } from "@mantine/core";
+import { Button, Checkbox, Group, Modal, Select, Stack, Textarea, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
@@ -12,6 +12,7 @@ import {
   ExecutorCreatePayload,
   ExecutorUpdatePayload
 } from "@/entities/executors/model/types";
+import { useOperationCategoriesQuery } from "@/entities/operations/model/use-operations-query";
 import { showErrorNotification } from "@/shared/lib/notifications/show-error";
 import { showSuccessNotification } from "@/shared/lib/notifications/show-success";
 
@@ -20,6 +21,7 @@ type ExecutorFormValues = {
   phone: string;
   email: string;
   specialization: string;
+  payment_category_id: string;
   hourly_rate: string;
   comment: string;
   is_active: boolean;
@@ -30,6 +32,7 @@ const emptyValues: ExecutorFormValues = {
   phone: "",
   email: "",
   specialization: "",
+  payment_category_id: "",
   hourly_rate: "0",
   comment: "",
   is_active: true
@@ -43,12 +46,16 @@ function buildExecutorPayload(values: ExecutorFormValues): ExecutorCreatePayload
     ...(values.phone.trim() ? { phone: values.phone.trim() } : {}),
     ...(values.email.trim() ? { email: values.email.trim() } : {}),
     ...(values.specialization.trim() ? { specialization: values.specialization.trim() } : {}),
+    ...(values.payment_category_id ? { payment_category_id: values.payment_category_id } : {}),
     ...(values.comment.trim() ? { comment: values.comment.trim() } : {})
   };
 }
 
 function buildExecutorUpdatePayload(values: ExecutorFormValues): ExecutorUpdatePayload {
-  return buildExecutorPayload(values);
+  return {
+    ...buildExecutorPayload(values),
+    payment_category_id: values.payment_category_id || null
+  };
 }
 
 type ExecutorFormModalProps = {
@@ -60,6 +67,11 @@ type ExecutorFormModalProps = {
 export function ExecutorFormModal({ opened, onClose, executor }: ExecutorFormModalProps) {
   const queryClient = useQueryClient();
   const syncedExecutorKeyRef = useRef<string | null>(null);
+  const categoriesQuery = useOperationCategoriesQuery({
+    page: 1,
+    page_size: 100,
+    active_only: true
+  });
   const form = useForm<ExecutorFormValues>({
     initialValues: emptyValues,
     validate: {
@@ -88,6 +100,7 @@ export function ExecutorFormModal({ opened, onClose, executor }: ExecutorFormMod
             phone: executor.phone ?? "",
             email: executor.email ?? "",
             specialization: executor.specialization ?? "",
+            payment_category_id: executor.payment_category_id ?? "",
             hourly_rate: executor.hourly_rate,
             comment: executor.comment ?? "",
             is_active: executor.is_active
@@ -112,6 +125,12 @@ export function ExecutorFormModal({ opened, onClose, executor }: ExecutorFormMod
     }
   });
 
+  const categoryOptions =
+    categoriesQuery.data?.items.map((category) => ({
+      value: category.id,
+      label: `${category.code} · ${category.name}`
+    })) ?? [];
+
   return (
     <Modal opened={opened} onClose={onClose} size="lg" title={executor ? "Редактирование исполнителя" : "Новый исполнитель"}>
       <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
@@ -125,6 +144,14 @@ export function ExecutorFormModal({ opened, onClose, executor }: ExecutorFormMod
             <TextInput label="Специализация" {...form.getInputProps("specialization")} />
             <TextInput label="Ставка / час" type="number" {...form.getInputProps("hourly_rate")} />
           </Group>
+          <Select
+            clearable
+            data={categoryOptions}
+            label="Категория оплаты"
+            placeholder="Опционально"
+            value={form.values.payment_category_id || null}
+            onChange={(value) => form.setFieldValue("payment_category_id", value ?? "")}
+          />
           <Textarea label="Комментарий" minRows={3} {...form.getInputProps("comment")} />
           <Checkbox label="Активный исполнитель" {...form.getInputProps("is_active", { type: "checkbox" })} />
           <Group justify="flex-end">

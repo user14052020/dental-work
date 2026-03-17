@@ -8,11 +8,15 @@ export type Executor = {
   phone?: string | null;
   email?: string | null;
   specialization?: string | null;
+  payment_category_id?: string | null;
+  payment_category_name?: string | null;
   hourly_rate: string;
   comment?: string | null;
   is_active: boolean;
   work_count: number;
   production_total: string;
+  earnings_total: string;
+  earnings_current_month: string;
 };
 
 export type ExecutorCreatePayload = {
@@ -20,6 +24,7 @@ export type ExecutorCreatePayload = {
   phone?: string;
   email?: string;
   specialization?: string;
+  payment_category_id?: string | null;
   hourly_rate: string;
   comment?: string;
   is_active: boolean;

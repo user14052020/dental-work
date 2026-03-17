@@ -6,6 +6,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.exception_handlers import register_exception_handlers
 from app.api.router import api_router
@@ -44,6 +45,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, debug=settings.app_debug, lifespan=lifespan)
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+settings.attachments_storage_path.mkdir(parents=True, exist_ok=True)
+app.mount("/media/attachments", StaticFiles(directory=settings.attachments_storage_path), name="work-attachments")
 
 app.add_middleware(
     CORSMiddleware,

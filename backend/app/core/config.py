@@ -32,8 +32,11 @@ class Settings(BaseSettings):
     redis_url: str
     elasticsearch_url: str
     elasticsearch_clients_index: str = "dental_clients"
+    elasticsearch_doctors_index: str = "dental_doctors"
     elasticsearch_executors_index: str = "dental_executors"
     elasticsearch_materials_index: str = "dental_materials"
+    elasticsearch_operations_index: str = "dental_operations"
+    elasticsearch_work_catalog_index: str = "dental_work_catalog"
     elasticsearch_works_index: str = "dental_works"
     cors_origins: str = "http://localhost:3100,http://127.0.0.1:3100"
     background_jobs_enabled: bool = True
@@ -48,6 +51,9 @@ class Settings(BaseSettings):
     db_max_overflow: int = 10
     db_pool_timeout: int = 30
     db_pool_recycle: int = 1800
+    attachments_storage_dir: str = str(PROJECT_ROOT_DIR / "storage" / "work_attachments")
+    attachments_public_base_url: str = ""
+    attachments_max_size_bytes: int = 2 * 1024 * 1024
 
     @property
     def parsed_cors_origins(self) -> list[str]:
@@ -56,6 +62,10 @@ class Settings(BaseSettings):
     @property
     def parsed_dashboard_cache_windows(self) -> list[str]:
         return [window.strip() for window in self.dashboard_cache_windows.split(",") if window.strip()]
+
+    @property
+    def attachments_storage_path(self) -> Path:
+        return Path(self.attachments_storage_dir)
 
 
 @lru_cache

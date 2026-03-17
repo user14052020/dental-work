@@ -18,11 +18,14 @@ function getProxiedPath(pathname: string) {
   return pathname.replace(/^\/api\/proxy/, "");
 }
 
-function buildResponse(response: Response, body: string, refreshedSession?: BackendAuthSession | null) {
-  const nextResponse = new NextResponse(body || null, {
+function buildResponse(response: Response, body: BodyInit | null, refreshedSession?: BackendAuthSession | null) {
+  const nextResponse = new NextResponse(body, {
     status: response.status,
     headers: {
-      "Content-Type": response.headers.get("content-type") ?? "application/json"
+      "Content-Type": response.headers.get("content-type") ?? "application/json",
+      ...(response.headers.get("content-disposition")
+        ? { "Content-Disposition": response.headers.get("content-disposition") as string }
+        : {})
     }
   });
 
@@ -40,7 +43,7 @@ function buildResponse(response: Response, body: string, refreshedSession?: Back
 async function performAuthorizedRequest(
   request: NextRequest,
   accessToken: string | null,
-  body: string | undefined
+  body: BodyInit | undefined
 ) {
   return fetchBackend({
     path: getProxiedPath(request.nextUrl.pathname),
@@ -55,7 +58,10 @@ async function performAuthorizedRequest(
 async function handleProxyRequest(request: NextRequest) {
   const accessToken = request.cookies.get(accessTokenCookieName)?.value ?? null;
   const refreshToken = request.cookies.get(refreshTokenCookieName)?.value ?? null;
-  const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.text();
+  const body =
+    request.method === "GET" || request.method === "HEAD"
+      ? undefined
+      : Buffer.from(await request.arrayBuffer());
 
   let refreshedSession: BackendAuthSession | null = null;
   let currentAccessToken = accessToken;
@@ -72,7 +78,7 @@ async function handleProxyRequest(request: NextRequest) {
     response = await performAuthorizedRequest(request, refreshedSession.accessToken, body);
   }
 
-  const responseBody = await response.text();
+  const responseBody = response.status === 204 ? null : Buffer.from(await response.arrayBuffer());
   return buildResponse(response, responseBody, refreshedSession);
 }
 
@@ -99,6 +105,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  return handle(request);
+}
+
+export async function PUT(request: NextRequest) {
   return handle(request);
 }
 
