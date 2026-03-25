@@ -1,7 +1,9 @@
 import {
   Material,
+  MaterialDetail,
   MaterialConsumePayload,
   MaterialCreatePayload,
+  ManualMaterialConsumptionUpdatePayload,
   MaterialsFilters,
   MaterialsResponse,
   MaterialUpdatePayload
@@ -16,7 +18,7 @@ export function fetchMaterials(filters: MaterialsFilters) {
 }
 
 export function fetchMaterial(materialId: string) {
-  return httpClient<Material>({
+  return httpClient<MaterialDetail>({
     path: `/api/proxy/materials/${materialId}`
   });
 }
@@ -42,5 +44,23 @@ export function consumeMaterial(materialId: string, payload: MaterialConsumePayl
     path: `/api/proxy/materials/${materialId}/consume`,
     method: "POST",
     body: payload
+  });
+}
+
+export function updateManualMaterialConsumption(
+  movementId: string,
+  payload: ManualMaterialConsumptionUpdatePayload
+) {
+  return httpClient<Material>({
+    path: `/api/proxy/materials/manual-consumptions/${movementId}`,
+    method: "PATCH",
+    body: payload
+  });
+}
+
+export function deleteManualMaterialConsumption(movementId: string) {
+  return httpClient<Material>({
+    path: `/api/proxy/materials/manual-consumptions/${movementId}`,
+    method: "DELETE"
   });
 }

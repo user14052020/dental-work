@@ -12,16 +12,18 @@ export function useDeliveryPage() {
   const [clientId, setClientId] = useState("");
   const [executorId, setExecutorId] = useState("");
   const [sentFilter, setSentFilter] = useState("pending");
+  const [sortBy, setSortBy] = useState<"deadline_at" | "client_name" | "received_at">("deadline_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
-  const [selectedWorkIds, setSelectedWorkIds] = useState<string[]>([]);
-  const [selectedWorkId, setSelectedWorkId] = useState<string>();
+  const [selectedNaradIds, setSelectedNaradIds] = useState<string[]>([]);
+  const [selectedNaradId, setSelectedNaradId] = useState<string>();
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [detailOpened, detailHandlers] = useDisclosure(false);
 
   useEffect(() => {
     setPage(1);
-    setSelectedWorkIds([]);
-  }, [clientId, debouncedSearch, executorId, sentFilter]);
+    setSelectedNaradIds([]);
+  }, [clientId, debouncedSearch, executorId, sentFilter, sortBy, sortDirection]);
 
   const deliveryQuery = useDeliveryQuery({
     page,
@@ -29,7 +31,9 @@ export function useDeliveryPage() {
     search: debouncedSearch || undefined,
     client_id: clientId || undefined,
     executor_id: executorId || undefined,
-    sent: sentFilter === "all" ? undefined : sentFilter === "sent"
+    sent: sentFilter === "all" ? undefined : sentFilter === "sent",
+    sort_by: sortBy,
+    sort_direction: sortDirection
   });
 
   const clientsQuery = useClientsQuery({ page: 1, page_size: 100 });
@@ -44,36 +48,40 @@ export function useDeliveryPage() {
     executorsQuery,
     page,
     search,
-    selectedWorkId,
-    selectedWorkIds,
+    selectedNaradId,
+    selectedNaradIds,
     sentFilter,
+    sortBy,
+    sortDirection,
     setClientId,
     setExecutorId,
     setPage,
     setSearch,
     setSentFilter,
+    setSortBy,
+    setSortDirection,
     clearSelection() {
-      setSelectedWorkIds([]);
+      setSelectedNaradIds([]);
     },
     closeDetail() {
-      setSelectedWorkId(undefined);
+      setSelectedNaradId(undefined);
       detailHandlers.close();
     },
-    isSelected(workId: string) {
-      return selectedWorkIds.includes(workId);
+    isSelected(naradId: string) {
+      return selectedNaradIds.includes(naradId);
     },
-    openView(workId: string) {
-      setSelectedWorkId(workId);
+    openView(naradId: string) {
+      setSelectedNaradId(naradId);
       detailHandlers.open();
     },
-    toggleSelected(workId: string) {
-      setSelectedWorkIds((current) =>
-        current.includes(workId) ? current.filter((id) => id !== workId) : [...current, workId]
+    toggleSelected(naradId: string) {
+      setSelectedNaradIds((current) =>
+        current.includes(naradId) ? current.filter((id) => id !== naradId) : [...current, naradId]
       );
     },
-    toggleSelectAll(workIds: string[]) {
-      const allSelected = workIds.length > 0 && workIds.every((workId) => selectedWorkIds.includes(workId));
-      setSelectedWorkIds(allSelected ? [] : workIds);
+    toggleSelectAll(naradIds: string[]) {
+      const allSelected = naradIds.length > 0 && naradIds.every((naradId) => selectedNaradIds.includes(naradId));
+      setSelectedNaradIds(allSelected ? [] : naradIds);
     }
   };
 }

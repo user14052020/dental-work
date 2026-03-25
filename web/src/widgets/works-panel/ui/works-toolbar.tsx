@@ -1,4 +1,4 @@
-import { Button, Collapse, Group, Select, TextInput } from "@mantine/core";
+import { Button, Collapse, Select, TextInput } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { IconAdjustmentsHorizontal, IconPlus } from "@tabler/icons-react";
 
@@ -136,12 +136,7 @@ export function WorksToolbar({
   const [filtersOpened, { toggle }] = useDisclosure(false);
 
   return (
-    <Group
-      align="stretch"
-      justify="space-between"
-      wrap="wrap"
-      className="min-w-0 w-full flex-col md:flex-row md:items-end"
-    >
+    <div className="flex min-w-0 w-full flex-col gap-3 md:flex-row md:items-end md:justify-between">
       <div className="min-w-0 w-full md:flex-1">
         <WorksFilterFields
           className="hidden md:grid md:grid-cols-3 xl:grid-cols-6"
@@ -200,9 +195,13 @@ export function WorksToolbar({
           </Collapse>
         </div>
       </div>
-      <Button leftSection={<IconPlus size={16} />} onClick={onCreate} className="w-full self-stretch md:w-auto md:self-auto">
+      <Button
+        leftSection={<IconPlus size={16} />}
+        onClick={onCreate}
+        className="w-full md:w-auto md:self-end"
+      >
         Новая работа
       </Button>
-    </Group>
+    </div>
   );
 }

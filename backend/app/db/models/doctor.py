@@ -20,4 +20,4 @@ class Doctor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
     client = relationship("Client", back_populates="doctors")
-    works = relationship("Work", back_populates="doctor")
+    narads = relationship("Narad", back_populates="doctor")

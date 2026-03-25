@@ -1,4 +1,5 @@
 import { Card, Group, Stack, Text, ThemeIcon } from "@mantine/core";
+import Link from "next/link";
 import { ReactNode } from "react";
 
 import { cn } from "@/shared/lib/cn";
@@ -8,10 +9,11 @@ type KpiCardProps = {
   value: string;
   hint: string;
   icon: ReactNode;
+  href?: string;
 };
 
-export function KpiCard({ title, value, hint, icon }: KpiCardProps) {
-  return (
+export function KpiCard({ title, value, hint, icon, href }: KpiCardProps) {
+  const content = (
     <Card className={cn("panel-surface", "shadow-panel", "h-full rounded-[30px]")} padding={0}>
       <div className="flex h-full flex-col p-5 md:p-6">
         <Group justify="space-between" align="start" wrap="nowrap" className="h-full gap-4">
@@ -33,4 +35,14 @@ export function KpiCard({ title, value, hint, icon }: KpiCardProps) {
       </div>
     </Card>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className="block h-full no-underline">
+        {content}
+      </Link>
+    );
+  }
+
+  return content;
 }

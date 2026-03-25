@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
-from typing import Annotated
+from typing import Annotated, Optional
 
 from app.common.schemas import TimestampedReadSchema
 
@@ -22,8 +24,16 @@ class RefreshTokenRequest(BaseModel):
 
 
 class UserRead(TimestampedReadSchema):
+    full_name: str
     email: EmailStr
+    phone: Optional[str] = None
+    job_title: Optional[str] = None
     is_active: bool
+    is_fired: bool = False
+    permission_codes: list[str] = []
+    executor_id: Optional[str] = None
+    executor_name: Optional[str] = None
+    is_technician: bool = False
 
 
 class AuthTokenRead(BaseModel):

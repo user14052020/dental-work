@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import get_current_user, get_organization_service
+from app.api.dependencies import get_current_user, get_organization_service, require_permissions
 from app.modules.organization.schemas import OrganizationProfileRead, OrganizationProfileUpsert
 from app.modules.organization.service import OrganizationService
 
@@ -10,7 +10,7 @@ from app.modules.organization.service import OrganizationService
 router = APIRouter(
     prefix="/organization",
     tags=["organization"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(get_current_user), Depends(require_permissions("organization.manage"))],
 )
 
 

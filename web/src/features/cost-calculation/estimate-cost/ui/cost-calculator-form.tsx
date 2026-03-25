@@ -205,7 +205,7 @@ export function CostCalculatorForm({ result, onResult }: CostCalculatorFormProps
             <Text fw={700} size="lg">
               Результат расчёта
             </Text>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-[20px] bg-slate-50 p-5">
                 <Text c="dimmed" size="sm">
                   Материалы
@@ -230,30 +230,40 @@ export function CostCalculatorForm({ result, onResult }: CostCalculatorFormProps
                   {formatNumber(result.profitability_percent)}%
                 </Text>
               </div>
+              <div className="rounded-[20px] bg-slate-50 p-5">
+                <Text c="dimmed" size="sm">
+                  Заработали
+                </Text>
+                <Text fw={800} mt={8} size="1.6rem">
+                  {formatCurrency(result.margin)}
+                </Text>
+              </div>
             </div>
 
-            <Table.ScrollContainer minWidth={760}>
-              <Table verticalSpacing="md">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Строка</Table.Th>
-                    <Table.Th>Количество</Table.Th>
-                    <Table.Th>Цена</Table.Th>
-                    <Table.Th>Сумма</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {result.lines.map((line) => (
-                    <Table.Tr key={`${line.name}-${line.quantity}`}>
-                      <Table.Td>{line.name}</Table.Td>
-                      <Table.Td>{line.quantity}</Table.Td>
-                      <Table.Td>{formatCurrency(line.unit_cost)}</Table.Td>
-                      <Table.Td>{formatCurrency(line.total_cost)}</Table.Td>
+            {result.lines.length ? (
+              <Table.ScrollContainer minWidth={760}>
+                <Table verticalSpacing="md">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Строка</Table.Th>
+                      <Table.Th>Количество</Table.Th>
+                      <Table.Th>Цена</Table.Th>
+                      <Table.Th>Сумма</Table.Th>
                     </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {result.lines.map((line) => (
+                      <Table.Tr key={`${line.name}-${line.quantity}`}>
+                        <Table.Td>{line.name}</Table.Td>
+                        <Table.Td>{line.quantity}</Table.Td>
+                        <Table.Td>{formatCurrency(line.unit_cost)}</Table.Td>
+                        <Table.Td>{formatCurrency(line.total_cost)}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            ) : null}
           </Stack>
         </>
       ) : null}

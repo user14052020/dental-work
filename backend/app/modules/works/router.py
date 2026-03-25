@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
 
-from app.api.dependencies import get_current_user, get_work_service
+from app.api.dependencies import get_current_user, get_work_service, require_permissions
 from app.modules.auth.schemas import UserRead
 from app.modules.operations.schemas import WorkOperationStatusUpdate
 from app.modules.works.schemas import (
@@ -22,7 +22,11 @@ from app.modules.works.schemas import (
 from app.modules.works.service import WorkService
 
 
-router = APIRouter(prefix="/works", tags=["works"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/works",
+    tags=["works"],
+    dependencies=[Depends(get_current_user), Depends(require_permissions("works.manage"))],
+)
 
 
 @router.get("", response_model=WorkListResponse)
@@ -58,7 +62,7 @@ async def get_work(work_id: str, service: WorkService = Depends(get_work_service
 async def create_work(
     payload: WorkCreate,
     service: WorkService = Depends(get_work_service),
-    current_user: UserRead = Depends(get_current_user),
+    current_user: UserRead = Depends(require_permissions("works.manage")),
 ) -> WorkRead:
     return await service.create_work(payload, actor_email=current_user.email)
 
@@ -68,7 +72,7 @@ async def update_status(
     work_id: str,
     payload: WorkUpdateStatus,
     service: WorkService = Depends(get_work_service),
-    current_user: UserRead = Depends(get_current_user),
+    current_user: UserRead = Depends(require_permissions("works.manage")),
 ) -> WorkRead:
     return await service.update_status(work_id, payload, actor_email=current_user.email)
 
@@ -78,7 +82,7 @@ async def close_work(
     work_id: str,
     payload: WorkClose,
     service: WorkService = Depends(get_work_service),
-    current_user: UserRead = Depends(get_current_user),
+    current_user: UserRead = Depends(require_permissions("works.manage")),
 ) -> WorkRead:
     return await service.close_work(work_id, payload, actor_email=current_user.email)
 
@@ -88,7 +92,7 @@ async def reopen_work(
     work_id: str,
     payload: WorkReopen,
     service: WorkService = Depends(get_work_service),
-    current_user: UserRead = Depends(get_current_user),
+    current_user: UserRead = Depends(require_permissions("works.manage")),
 ) -> WorkRead:
     return await service.reopen_work(work_id, payload, actor_email=current_user.email)
 
@@ -99,7 +103,7 @@ async def update_operation_status(
     work_operation_id: str,
     payload: WorkOperationStatusUpdate,
     service: WorkService = Depends(get_work_service),
-    current_user: UserRead = Depends(get_current_user),
+    current_user: UserRead = Depends(require_permissions("works.manage")),
 ) -> WorkRead:
     return await service.update_operation_status(
         work_id,
@@ -114,7 +118,7 @@ async def upload_work_attachment(
     work_id: str,
     file: UploadFile = File(...),
     service: WorkService = Depends(get_work_service),
-    current_user: UserRead = Depends(get_current_user),
+    current_user: UserRead = Depends(require_permissions("works.manage")),
 ) -> WorkAttachmentRead:
     return await service.upload_attachment(work_id, file=file, actor_email=current_user.email)
 
@@ -124,7 +128,7 @@ async def delete_work_attachment(
     work_id: str,
     attachment_id: str,
     service: WorkService = Depends(get_work_service),
-    current_user: UserRead = Depends(get_current_user),
+    current_user: UserRead = Depends(require_permissions("works.manage")),
 ) -> Response:
     await service.delete_attachment(work_id, attachment_id, actor_email=current_user.email)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

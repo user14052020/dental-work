@@ -39,6 +39,13 @@ class Client(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     works = relationship("Work", back_populates="client")
+    narads = relationship("Narad", back_populates="client")
+    payments = relationship(
+        "Payment",
+        back_populates="client",
+        cascade="all, delete-orphan",
+        order_by="Payment.payment_date.desc()",
+    )
     doctors = relationship("Doctor", back_populates="client")
     catalog_prices = relationship(
         "ClientWorkCatalogPrice",

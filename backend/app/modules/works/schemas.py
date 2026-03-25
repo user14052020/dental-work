@@ -6,29 +6,14 @@ from typing import Annotated, Optional
 
 from pydantic import Field, StringConstraints, field_validator
 
-from app.common.enums import FaceShape, PatientGender, ToothSelectionState, ToothSurface, WorkStatus
+from app.common.enums import WorkStatus
 from app.common.pagination import PaginatedResponse
-from app.common.schemas import BaseSchema, PhoneString, QuantityValue, TimestampedReadSchema
+from app.common.schemas import BaseSchema, QuantityValue, TimestampedReadSchema
 from app.modules.operations.schemas import WorkOperationCreate, WorkOperationRead
 
 
 ShortString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
 LongString = Annotated[Optional[str], StringConstraints(strip_whitespace=True, max_length=2000)]
-ToothCodeString = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, pattern=r"^(?:[1-4][1-8]|[5-8][1-5])$", min_length=2, max_length=2),
-]
-
-
-class ToothSelectionItem(BaseSchema):
-    tooth_code: ToothCodeString
-    state: ToothSelectionState = ToothSelectionState.TARGET
-    surfaces: list[ToothSurface] = Field(default_factory=list)
-
-    @field_validator("surfaces")
-    @classmethod
-    def deduplicate_surfaces(cls, value: list[ToothSurface]) -> list[ToothSurface]:
-        return list(dict.fromkeys(value))
 
 
 class WorkMaterialUsageCreate(BaseSchema):
@@ -42,6 +27,8 @@ class WorkMaterialUsageRead(TimestampedReadSchema):
     quantity: Decimal
     unit_cost: Decimal
     total_cost: Decimal
+    reserved_at: Optional[datetime] = None
+    consumed_at: Optional[datetime] = None
 
 
 class WorkAttachmentRead(TimestampedReadSchema):
@@ -52,9 +39,19 @@ class WorkAttachmentRead(TimestampedReadSchema):
     download_url: str
 
 
+class WorkPaymentAllocationRead(TimestampedReadSchema):
+    payment_id: str
+    payment_number: str
+    payment_date: datetime
+    payment_method: str
+    payment_amount: Decimal
+    allocated_amount: Decimal
+    payment_unallocated_total: Decimal
+    external_reference: Optional[str] = None
+
+
 class WorkItemCreate(BaseSchema):
     work_catalog_item_id: Optional[str] = None
-    work_type: Optional[ShortString] = None
     description: LongString = None
     quantity: Decimal = Field(default=Decimal("1.00"), gt=0)
     unit_price: Optional[Decimal] = Field(default=None, ge=0)
@@ -74,25 +71,10 @@ class WorkItemRead(TimestampedReadSchema):
 
 
 class WorkCreate(BaseSchema):
-    order_number: ShortString
-    client_id: str
-    executor_id: Optional[str] = None
-    doctor_id: Optional[str] = None
-    work_catalog_item_id: Optional[str] = None
-    work_type: Optional[ShortString] = None
+    narad_id: str
+    executor_id: str
+    work_catalog_item_id: str
     description: LongString = None
-    doctor_name: Optional[ShortString] = None
-    doctor_phone: Optional[PhoneString] = None
-    patient_name: Optional[ShortString] = None
-    patient_age: Optional[int] = Field(default=None, ge=0, le=130)
-    patient_gender: Optional[PatientGender] = None
-    require_color_photo: bool = False
-    face_shape: Optional[FaceShape] = None
-    implant_system: Optional[ShortString] = None
-    metal_type: Optional[ShortString] = None
-    shade_color: Optional[ShortString] = None
-    tooth_formula: Optional[str] = Field(default=None, max_length=255)
-    tooth_selection: list[ToothSelectionItem] = Field(default_factory=list)
     status: WorkStatus = WorkStatus.NEW
     received_at: datetime
     deadline_at: Optional[datetime] = None
@@ -138,20 +120,11 @@ class WorkReopen(BaseSchema):
 
 
 class WorkCompactRead(TimestampedReadSchema):
+    narad_id: str
+    narad_number: str
     order_number: str
     work_type: str
-    doctor_id: Optional[str] = None
     work_catalog_item_id: Optional[str] = None
-    doctor_name: Optional[str]
-    doctor_phone: Optional[str]
-    patient_name: Optional[str]
-    patient_age: Optional[int]
-    patient_gender: Optional[str]
-    require_color_photo: bool = False
-    face_shape: Optional[str]
-    implant_system: Optional[str]
-    metal_type: Optional[str]
-    shade_color: Optional[str]
     status: str
     received_at: datetime
     deadline_at: Optional[datetime]
@@ -164,16 +137,12 @@ class WorkCompactRead(TimestampedReadSchema):
 
 
 class WorkRead(WorkCompactRead):
-    client_id: str
-    client_name: str
     executor_id: Optional[str]
     executor_name: Optional[str]
     work_catalog_item_code: Optional[str] = None
     work_catalog_item_name: Optional[str] = None
     work_catalog_item_category: Optional[str] = None
     description: Optional[str]
-    tooth_formula: Optional[str]
-    tooth_selection: list[ToothSelectionItem] = Field(default_factory=list)
     completed_at: Optional[datetime]
     closed_at: Optional[datetime]
     base_price_for_client: Decimal
@@ -185,6 +154,7 @@ class WorkRead(WorkCompactRead):
     balance_due: Decimal
     work_items: list[WorkItemRead] = Field(default_factory=list)
     attachments: list[WorkAttachmentRead] = Field(default_factory=list)
+    payment_allocations: list[WorkPaymentAllocationRead] = Field(default_factory=list)
     operations: list[WorkOperationRead] = Field(default_factory=list)
     materials: list[WorkMaterialUsageRead] = Field(default_factory=list)
     change_logs: list["WorkChangeLogRead"] = Field(default_factory=list)

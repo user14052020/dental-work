@@ -13,9 +13,16 @@ from app.modules.auth.service import AuthService
 @dataclass
 class FakeUser:
     id: str
+    full_name: str
     email: str
     hashed_password: str
+    phone: str | None = None
+    job_title: str | None = None
     is_active: bool = True
+    is_fired: bool = False
+    permission_codes: list[str] = field(default_factory=list)
+    executor_id: str | None = None
+    executor: object | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -39,12 +46,22 @@ class FakeUserRepository:
     async def get_by_id(self, user_id: str) -> FakeUser | None:
         return self.items.get(user_id)
 
+    async def count(self) -> int:
+        return len(self.items)
+
     async def add(self, user) -> FakeUser:
         fake = FakeUser(
             id=str(uuid4()),
+            full_name=getattr(user, "full_name", user.email),
             email=user.email,
             hashed_password=user.hashed_password,
+            phone=getattr(user, "phone", None),
+            job_title=getattr(user, "job_title", None),
             is_active=getattr(user, "is_active", True),
+            is_fired=getattr(user, "is_fired", False),
+            permission_codes=list(getattr(user, "permission_codes", [])),
+            executor_id=getattr(user, "executor_id", None),
+            executor=getattr(user, "executor", None),
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
@@ -101,6 +118,7 @@ async def test_register_returns_access_and_refresh_tokens():
     assert session.access_token
     assert session.refresh_token
     assert session.user.email == "admin@example.com"
+    assert session.user.permission_codes == ["*"]
 
 
 @pytest.mark.asyncio

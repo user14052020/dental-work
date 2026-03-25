@@ -5,12 +5,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.dependencies import get_current_user, get_dashboard_service
+from app.api.dependencies import get_current_user, get_dashboard_service, require_permissions
 from app.modules.dashboard.schemas import DashboardRead
 from app.modules.dashboard.service import DashboardService
 
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/dashboard",
+    tags=["dashboard"],
+    dependencies=[Depends(get_current_user), Depends(require_permissions("dashboard.view"))],
+)
 
 
 @router.get("", response_model=DashboardRead)

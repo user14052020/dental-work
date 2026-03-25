@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from uuid import uuid4
 from typing import Any
 
 from elasticsearch import AsyncElasticsearch, BadRequestError
+from elastic_transport import ConnectionError as ElasticTransportConnectionError, ConnectionTimeout
 from redis.asyncio import Redis
 
 from app.core.config import settings
@@ -50,13 +52,20 @@ class SearchService:
         self._client = client
 
     async def ensure_indices(self) -> None:
-        await self._ensure_index(settings.elasticsearch_clients_index, self.clients_index_mappings())
-        await self._ensure_index(settings.elasticsearch_doctors_index, self.doctors_index_mappings())
-        await self._ensure_index(settings.elasticsearch_executors_index, self.executors_index_mappings())
-        await self._ensure_index(settings.elasticsearch_materials_index, self.materials_index_mappings())
-        await self._ensure_index(settings.elasticsearch_operations_index, self.operations_index_mappings())
-        await self._ensure_index(settings.elasticsearch_work_catalog_index, self.work_catalog_index_mappings())
-        await self._ensure_index(settings.elasticsearch_works_index, self.works_index_mappings())
+        for attempt in range(5):
+            try:
+                await self._ensure_index(settings.elasticsearch_clients_index, self.clients_index_mappings())
+                await self._ensure_index(settings.elasticsearch_doctors_index, self.doctors_index_mappings())
+                await self._ensure_index(settings.elasticsearch_executors_index, self.executors_index_mappings())
+                await self._ensure_index(settings.elasticsearch_materials_index, self.materials_index_mappings())
+                await self._ensure_index(settings.elasticsearch_operations_index, self.operations_index_mappings())
+                await self._ensure_index(settings.elasticsearch_work_catalog_index, self.work_catalog_index_mappings())
+                await self._ensure_index(settings.elasticsearch_works_index, self.works_index_mappings())
+                return
+            except (ConnectionTimeout, ElasticTransportConnectionError):
+                if attempt == 4:
+                    raise
+                await asyncio.sleep(1 + attempt)
 
     async def _ensure_index(self, index_name: str, mappings: dict[str, Any]) -> None:
         exists = await self._client.indices.exists(index=index_name)
@@ -312,6 +321,9 @@ class SearchService:
                         "metal_type^2",
                         "shade_color^2",
                         "tooth_formula^2",
+                        "outside_lab_name^3",
+                        "outside_order_number^2",
+                        "outside_comment^2",
                         "tooth_selection_summary^2",
                         "status^2",
                         "received_at",
@@ -491,6 +503,14 @@ class SearchService:
                 "metal_type": {"type": "text"},
                 "shade_color": {"type": "text"},
                 "tooth_formula": {"type": "text"},
+                "is_outside_work": {"type": "keyword"},
+                "outside_lab_name": {"type": "text"},
+                "outside_order_number": {"type": "keyword"},
+                "outside_cost": {"type": "keyword"},
+                "outside_sent_at": {"type": "keyword"},
+                "outside_due_at": {"type": "keyword"},
+                "outside_returned_at": {"type": "keyword"},
+                "outside_comment": {"type": "text"},
                 "tooth_selection_summary": {"type": "text"},
                 "work_item_types": {"type": "text"},
                 "work_item_codes": {"type": "keyword"},

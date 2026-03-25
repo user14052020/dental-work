@@ -135,7 +135,7 @@ export function ClientFormModal({ opened, onClose, client }: ClientFormModalProp
   const queryClient = useQueryClient();
   const syncedClientKeyRef = useRef<string | null>(null);
   const clientDetailQuery = useClientDetailQuery(client?.id);
-  const workCatalogQuery = useWorkCatalogQuery({ page: 1, page_size: 200, active_only: true });
+  const workCatalogQuery = useWorkCatalogQuery({ page: 1, page_size: 100, active_only: true });
   const form = useForm<ClientFormValues>({
     initialValues: emptyValues,
     validate: {

@@ -24,6 +24,17 @@ class MaterialUnit(StrEnum):
     HOUR = "hour"
 
 
+class StockMovementType(StrEnum):
+    OPENING_BALANCE = "opening_balance"
+    RECEIPT = "receipt"
+    RESERVE = "reserve"
+    RELEASE = "release"
+    CONSUME = "consume"
+    RESTORE = "restore"
+    ADJUSTMENT = "adjustment"
+    INVENTORY = "inventory"
+
+
 class ToothSelectionState(StrEnum):
     TARGET = "target"
     MISSING = "missing"
@@ -54,3 +65,11 @@ class FaceShape(StrEnum):
     SQUARE = "square"
     OVAL = "oval"
     TRIANGLE = "triangle"
+
+
+class PaymentMethod(StrEnum):
+    CASH = "cash"
+    CARD = "card"
+    BANK_TRANSFER = "bank_transfer"
+    SBP = "sbp"
+    OTHER = "other"

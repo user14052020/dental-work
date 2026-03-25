@@ -10,6 +10,7 @@ from app.common.enums import WorkStatus
 from app.db.models.client import Client
 from app.db.models.executor import Executor
 from app.db.models.work import Work, WorkMaterial
+from app.db.models.narad import Narad
 
 
 class DashboardRepository:
@@ -18,10 +19,13 @@ class DashboardRepository:
 
     async def get_overview(self, *, date_from: datetime | None, date_to: datetime | None) -> dict:
         period_filters = []
+        narad_period_filters = []
         if date_from:
             period_filters.append(Work.received_at >= date_from)
+            narad_period_filters.append(Narad.received_at >= date_from)
         if date_to:
             period_filters.append(Work.received_at <= date_to)
+            narad_period_filters.append(Narad.received_at <= date_to)
 
         active_statuses = [WorkStatus.NEW.value, WorkStatus.IN_PROGRESS.value, WorkStatus.IN_REVIEW.value]
         overdue_filter = (
@@ -39,14 +43,19 @@ class DashboardRepository:
         material_expenses_stmt = select(func.coalesce(func.sum(WorkMaterial.total_cost), Decimal("0.00"))).join(
             Work, Work.id == WorkMaterial.work_id
         )
+        outside_cost_stmt = select(func.coalesce(func.sum(Narad.outside_cost), Decimal("0.00"))).select_from(Narad)
 
         for filter_expression in period_filters:
             revenue_stmt = revenue_stmt.where(filter_expression)
             material_expenses_stmt = material_expenses_stmt.where(filter_expression)
+        for filter_expression in narad_period_filters:
+            outside_cost_stmt = outside_cost_stmt.where(filter_expression)
 
         revenue_row = await self.session.execute(revenue_stmt)
-        revenue, profit = revenue_row.one()
+        revenue, work_profit = revenue_row.one()
         material_expenses = await self.session.scalar(material_expenses_stmt)
+        outside_cost_total = await self.session.scalar(outside_cost_stmt)
+        profit = (work_profit or Decimal("0.00")) - (outside_cost_total or Decimal("0.00"))
 
         top_clients_stmt = (
             select(
@@ -84,7 +93,7 @@ class DashboardRepository:
             "active_works": int(active_works or 0),
             "overdue_works": int(overdue_works or 0),
             "revenue": revenue or Decimal("0.00"),
-            "profit": profit or Decimal("0.00"),
+            "profit": profit.quantize(Decimal("0.01")),
             "material_expenses": material_expenses or Decimal("0.00"),
             "top_clients": top_clients,
             "top_executors": top_executors,

@@ -4,18 +4,24 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.dependencies import get_current_user, get_material_service
+from app.api.dependencies import get_current_user, get_material_service, require_permissions
 from app.modules.materials.schemas import (
     MaterialConsume,
     MaterialCreate,
+    MaterialDetailRead,
     MaterialListResponse,
     MaterialRead,
+    ManualMaterialConsumptionUpdate,
     MaterialUpdate,
 )
 from app.modules.materials.service import MaterialService
 
 
-router = APIRouter(prefix="/materials", tags=["materials"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/materials",
+    tags=["materials"],
+    dependencies=[Depends(get_current_user), Depends(require_permissions("materials.manage"))],
+)
 
 
 @router.get("", response_model=MaterialListResponse)
@@ -31,11 +37,11 @@ async def list_materials(
     )
 
 
-@router.get("/{material_id}", response_model=MaterialRead)
+@router.get("/{material_id}", response_model=MaterialDetailRead)
 async def get_material(
     material_id: str,
     service: MaterialService = Depends(get_material_service),
-) -> MaterialRead:
+) -> MaterialDetailRead:
     return await service.get_material(material_id)
 
 
@@ -63,3 +69,20 @@ async def consume_material(
     service: MaterialService = Depends(get_material_service),
 ) -> MaterialRead:
     return await service.consume_material(material_id, payload)
+
+
+@router.patch("/manual-consumptions/{movement_id}", response_model=MaterialRead)
+async def update_manual_consumption(
+    movement_id: str,
+    payload: ManualMaterialConsumptionUpdate,
+    service: MaterialService = Depends(get_material_service),
+) -> MaterialRead:
+    return await service.update_manual_consumption(movement_id, payload)
+
+
+@router.delete("/manual-consumptions/{movement_id}", response_model=MaterialRead)
+async def delete_manual_consumption(
+    movement_id: str,
+    service: MaterialService = Depends(get_material_service),
+) -> MaterialRead:
+    return await service.delete_manual_consumption(movement_id)

@@ -2,7 +2,7 @@ import {
   OperationExecutionStatus,
   WorkOperationCreatePayload
 } from "@/entities/operations/model/types";
-import { ToothSelectionItem } from "@/entities/works/model/tooth-selection";
+import { PaymentMethod } from "@/entities/payments/model/types";
 import { PaginatedResponse } from "@/shared/types/api";
 
 export const workStatusOptions = [
@@ -31,22 +31,11 @@ export type WorkCompact = {
   id: string;
   created_at: string;
   updated_at: string;
+  narad_id: string;
+  narad_number: string;
   order_number: string;
   work_type: string;
-  doctor_id?: string | null;
   work_catalog_item_id?: string | null;
-  doctor_name?: string | null;
-  doctor_phone?: string | null;
-  patient_name?: string | null;
-  patient_age?: number | null;
-  patient_gender?: string | null;
-  patient_gender_label?: string | null;
-  require_color_photo: boolean;
-  face_shape?: string | null;
-  face_shape_label?: string | null;
-  implant_system?: string | null;
-  metal_type?: string | null;
-  shade_color?: string | null;
   status: WorkStatus;
   received_at: string;
   deadline_at?: string | null;
@@ -96,6 +85,20 @@ export type WorkAttachment = {
   download_url: string;
 };
 
+export type WorkPaymentAllocation = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  payment_id: string;
+  payment_number: string;
+  payment_date: string;
+  payment_method: PaymentMethod;
+  payment_amount: string;
+  allocated_amount: string;
+  payment_unallocated_total: string;
+  external_reference?: string | null;
+};
+
 export type WorkOperationLog = {
   id: string;
   created_at: string;
@@ -127,16 +130,12 @@ export type WorkOperation = {
 };
 
 export type Work = WorkCompact & {
-  client_id: string;
-  client_name: string;
   executor_id?: string | null;
   executor_name?: string | null;
   work_catalog_item_code?: string | null;
   work_catalog_item_name?: string | null;
   work_catalog_item_category?: string | null;
   description?: string | null;
-  tooth_formula?: string | null;
-  tooth_selection: ToothSelectionItem[];
   completed_at?: string | null;
   closed_at?: string | null;
   base_price_for_client: string;
@@ -148,6 +147,7 @@ export type Work = WorkCompact & {
   balance_due: string;
   work_items: WorkItem[];
   attachments: WorkAttachment[];
+  payment_allocations: WorkPaymentAllocation[];
   operations: WorkOperation[];
   materials: WorkMaterialUsage[];
   change_logs: WorkChangeLog[];
@@ -168,25 +168,10 @@ export type WorkMaterialUsageInput = {
 };
 
 export type WorkCreatePayload = {
-  order_number: string;
-  client_id: string;
-  executor_id?: string;
-  doctor_id?: string;
-  work_catalog_item_id?: string;
-  work_type?: string;
+  narad_id: string;
+  executor_id: string;
+  work_catalog_item_id: string;
   description?: string;
-  doctor_name?: string;
-  doctor_phone?: string;
-  patient_name?: string;
-  patient_age?: number;
-  patient_gender?: string;
-  require_color_photo: boolean;
-  face_shape?: string;
-  implant_system?: string;
-  metal_type?: string;
-  shade_color?: string;
-  tooth_formula?: string;
-  tooth_selection: ToothSelectionItem[];
   status: WorkStatus;
   received_at: string;
   deadline_at?: string;
@@ -195,7 +180,6 @@ export type WorkCreatePayload = {
   price_for_client: string;
   additional_expenses: string;
   labor_hours: string;
-  amount_paid: string;
   work_items?: WorkItemInput[];
   operations: WorkOperationCreatePayload[];
   materials: WorkMaterialUsageInput[];
@@ -203,7 +187,6 @@ export type WorkCreatePayload = {
 
 export type WorkItemInput = {
   work_catalog_item_id?: string;
-  work_type?: string;
   description?: string;
   quantity: string;
   unit_price?: string;

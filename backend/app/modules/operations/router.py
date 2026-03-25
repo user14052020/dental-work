@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.dependencies import get_current_user, get_operation_service
+from app.api.dependencies import get_current_user, get_operation_service, require_permissions
 from app.modules.operations.schemas import (
     ExecutorCategoryCreate,
     ExecutorCategoryListResponse,
@@ -18,7 +18,11 @@ from app.modules.operations.schemas import (
 from app.modules.operations.service import OperationService
 
 
-router = APIRouter(prefix="/operations", tags=["operations"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/operations",
+    tags=["operations"],
+    dependencies=[Depends(get_current_user), Depends(require_permissions("operations.manage"))],
+)
 
 
 @router.get("/categories", response_model=ExecutorCategoryListResponse)

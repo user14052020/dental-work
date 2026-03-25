@@ -1,5 +1,13 @@
 import { VatMode } from "@/shared/config/vat-options";
 
+export type PayrollPeriodPreview = {
+  key: string;
+  label: string;
+  date_from: string;
+  date_to: string;
+  is_current: boolean;
+};
+
 export type OrganizationProfile = {
   id: string;
   created_at: string;
@@ -24,6 +32,18 @@ export type OrganizationProfile = {
   vat_mode: VatMode;
   vat_label: string;
   vat_rate_percent?: string | number | null;
+  payroll_period_start_days: number[];
+  payroll_periods_preview: PayrollPeriodPreview[];
+  smtp_host?: string | null;
+  smtp_port: number;
+  smtp_username?: string | null;
+  smtp_from_email?: string | null;
+  smtp_from_name?: string | null;
+  smtp_reply_to?: string | null;
+  smtp_use_tls: boolean;
+  smtp_use_ssl: boolean;
+  smtp_password_configured: boolean;
+  smtp_enabled: boolean;
   comment?: string | null;
 };
 
@@ -46,5 +66,16 @@ export type OrganizationProfilePayload = {
   director_name?: string;
   accountant_name?: string;
   vat_mode: VatMode;
+  payroll_period_start_days: number[];
+  smtp_host?: string;
+  smtp_port: number;
+  smtp_username?: string;
+  smtp_password?: string;
+  clear_smtp_password?: boolean;
+  smtp_from_email?: string;
+  smtp_from_name?: string;
+  smtp_reply_to?: string;
+  smtp_use_tls: boolean;
+  smtp_use_ssl: boolean;
   comment?: string;
 };

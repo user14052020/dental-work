@@ -3,7 +3,6 @@
 import {
   ActionIcon,
   Button,
-  Checkbox,
   Divider,
   Group,
   Modal,
@@ -16,10 +15,9 @@ import {
 import { useForm } from "@mantine/form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
-import { useClientDetailQuery, useClientsQuery } from "@/entities/clients/model/use-clients-query";
-import { useDoctorsQuery } from "@/entities/doctors/model/use-doctors-query";
+import { useClientDetailQuery } from "@/entities/clients/model/use-clients-query";
 import { useExecutorsQuery } from "@/entities/executors/model/use-executors-query";
 import {
   OperationCatalog,
@@ -28,17 +26,16 @@ import {
 import { useOperationsQuery } from "@/entities/operations/model/use-operations-query";
 import { formatMaterialUnit } from "@/entities/materials/model/material-units";
 import { useMaterialsQuery } from "@/entities/materials/model/use-materials-query";
+import { naradsQueryKeys } from "@/entities/narads/model/query-keys";
+import { useNaradDetailQuery, useNaradsQuery } from "@/entities/narads/model/use-narads-query";
+import { Narad } from "@/entities/narads/model/types";
 import { useWorkCatalogQuery } from "@/entities/work-catalog/model/use-work-catalog-query";
 import { createWork } from "@/entities/works/api/works-api";
 import { worksQueryKeys } from "@/entities/works/model/query-keys";
 import {
-  faceShapeOptions,
-  patientGenderOptions,
   WorkItemInput,
   workStatusOptions
 } from "@/entities/works/model/types";
-import { formatToothSelectionSummary, ToothSelectionItem } from "@/entities/works/model/tooth-selection";
-import { Odontogram } from "@/entities/works/ui/odontogram";
 import { formatCurrency } from "@/shared/lib/formatters/format-currency";
 import { toDateTimeLocal, toIsoDateTime } from "@/shared/lib/formatters/format-date";
 import { showErrorNotification } from "@/shared/lib/notifications/show-error";
@@ -73,25 +70,11 @@ type WorkItemLine = {
 };
 
 type WorkFormValues = {
-  order_number: string;
-  client_id: string;
+  narad_id: string;
   executor_id: string;
-  doctor_id: string;
   work_catalog_item_id: string;
   work_type: string;
   description: string;
-  doctor_name: string;
-  doctor_phone: string;
-  patient_name: string;
-  patient_age: string;
-  patient_gender: string;
-  require_color_photo: boolean;
-  face_shape: string;
-  implant_system: string;
-  metal_type: string;
-  shade_color: string;
-  tooth_formula: string;
-  tooth_selection: ToothSelectionItem[];
   status: string;
   received_at: string;
   deadline_at: string;
@@ -100,42 +83,26 @@ type WorkFormValues = {
   price_for_client: string;
   additional_expenses: string;
   labor_hours: string;
-  amount_paid: string;
   work_items: WorkItemLine[];
   operations: WorkOperationLine[];
   materials: MaterialLine[];
 };
 
-function buildEmptyValues(): WorkFormValues {
+function buildEmptyValues(initialNarad?: Narad | null): WorkFormValues {
   return {
-    order_number: "",
-    client_id: "",
+    narad_id: initialNarad?.id ?? "",
     executor_id: "",
-    doctor_id: "",
     work_catalog_item_id: "",
     work_type: "",
     description: "",
-    doctor_name: "",
-    doctor_phone: "",
-    patient_name: "",
-    patient_age: "",
-    patient_gender: "",
-    require_color_photo: false,
-    face_shape: "",
-    implant_system: "",
-    metal_type: "",
-    shade_color: "",
-    tooth_formula: "",
-    tooth_selection: [],
     status: "new",
-    received_at: toDateTimeLocal(new Date().toISOString()),
-    deadline_at: "",
+    received_at: toDateTimeLocal(initialNarad?.received_at ?? new Date().toISOString()),
+    deadline_at: toDateTimeLocal(initialNarad?.deadline_at),
     base_price_for_client: "0",
     price_adjustment_percent: "0",
     price_for_client: "0",
     additional_expenses: "0",
     labor_hours: "0",
-    amount_paid: "0",
     work_items: [],
     operations: [],
     materials: []
@@ -145,6 +112,7 @@ function buildEmptyValues(): WorkFormValues {
 type WorkFormModalProps = {
   opened: boolean;
   onClose: () => void;
+  initialNarad?: Narad | null;
 };
 
 function calculateFinalPrice(basePrice: string, adjustmentPercent: string) {
@@ -198,14 +166,12 @@ function buildWorkItemsPayload(values: WorkFormValues): WorkItemInput[] | undefi
     .filter(
       (item) =>
         item.work_catalog_item_id ||
-        item.work_type.trim() ||
         item.description.trim() ||
         Number(item.quantity || 0) > 0 ||
         Number(item.unit_price || 0) > 0
     )
     .map((item) => ({
       ...(item.work_catalog_item_id ? { work_catalog_item_id: item.work_catalog_item_id } : {}),
-      ...(item.work_type.trim() ? { work_type: item.work_type.trim() } : {}),
       ...(item.description.trim() ? { description: item.description.trim() } : {}),
       quantity: item.quantity || "1",
       ...(item.unit_price.trim() ? { unit_price: item.unit_price.trim() } : {})
@@ -218,7 +184,6 @@ function buildWorkItemsPayload(values: WorkFormValues): WorkItemInput[] | undefi
   return [
     {
       ...(values.work_catalog_item_id ? { work_catalog_item_id: values.work_catalog_item_id } : {}),
-      ...(values.work_type.trim() ? { work_type: values.work_type.trim() } : {}),
       ...(values.description.trim() ? { description: values.description.trim() } : {}),
       quantity: "1",
       unit_price: calculateFinalPrice(values.base_price_for_client, values.price_adjustment_percent)
@@ -227,64 +192,94 @@ function buildWorkItemsPayload(values: WorkFormValues): WorkItemInput[] | undefi
   ];
 }
 
-export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
+export function WorkFormModal({ opened, onClose, initialNarad }: WorkFormModalProps) {
   const queryClient = useQueryClient();
-  const clientsQuery = useClientsQuery({ page: 1, page_size: 100 });
+  const syncedWorkKeyRef = useRef<string | null>(null);
+  const syncedNaradContextKeyRef = useRef<string | null>(null);
+  const naradsQuery = useNaradsQuery({ page: 1, page_size: 100 });
   const executorsQuery = useExecutorsQuery({ page: 1, page_size: 100 });
-  const workCatalogQuery = useWorkCatalogQuery({ page: 1, page_size: 200, active_only: true });
+  const workCatalogQuery = useWorkCatalogQuery({ page: 1, page_size: 100, active_only: true });
   const operationsQuery = useOperationsQuery({ page: 1, page_size: 100, active_only: true });
   const materialsQuery = useMaterialsQuery({ page: 1, page_size: 100 });
   const form = useForm<WorkFormValues>({
-    initialValues: buildEmptyValues(),
+    initialValues: buildEmptyValues(initialNarad),
     validate: {
-      order_number: (value) => (value.trim().length >= 1 ? null : "Укажите номер заказа."),
-      client_id: (value) => (value ? null : "Выберите клиента."),
-      work_type: (value) => (value.trim().length >= 1 ? null : "Укажите тип работы.")
+      narad_id: (value) => (value ? null : "Выберите наряд."),
+      executor_id: (value) => (value ? null : "Выберите исполнителя."),
+      work_catalog_item_id: (value) => (value ? null : "Выберите позицию каталога."),
+      work_items: (items) =>
+        items.some(
+          (item) =>
+            (item.description.trim() || Number(item.quantity || 0) > 0 || Number(item.unit_price || 0) > 0) &&
+            !item.work_catalog_item_id
+        )
+          ? "Для каждой дополнительной позиции выберите позицию каталога."
+          : null
     }
   });
-  const selectedClientDetailQuery = useClientDetailQuery(form.values.client_id || undefined);
-  const doctorsQuery = useDoctorsQuery({
-    page: 1,
-    page_size: 100,
-    active_only: true,
-    ...(form.values.client_id ? { client_id: form.values.client_id } : {})
-  });
+  const selectedNaradDetailQuery = useNaradDetailQuery(
+    !initialNarad && form.values.narad_id ? form.values.narad_id : undefined
+  );
+  const selectedNaradContext = initialNarad ?? (form.values.narad_id ? selectedNaradDetailQuery.data : undefined);
+  const selectedClientDetailQuery = useClientDetailQuery(selectedNaradContext?.client_id);
 
-  const clients = clientsQuery.data?.items ?? [];
-  const doctors = doctorsQuery.data?.items ?? [];
   const executors = executorsQuery.data?.items ?? [];
   const operations = operationsQuery.data?.items ?? [];
   const workCatalogItems = workCatalogQuery.data?.items;
-  const clientsById = new Map(clients.map((client) => [client.id, client]));
-  const doctorsById = new Map(doctors.map((doctor) => [doctor.id, doctor]));
+  const openNarads = (naradsQuery.data?.items ?? []).filter((narad) => !narad.is_closed);
   const executorsById = new Map(executors.map((executor) => [executor.id, executor]));
   const operationsById = new Map(operations.map((operation) => [operation.id, operation]));
   const workCatalogById = new Map((workCatalogItems ?? []).map((item) => [item.id, item]));
+  const naradContextLocked = Boolean(form.values.narad_id);
+
+  useEffect(() => {
+    if (!opened) {
+      syncedWorkKeyRef.current = null;
+      return;
+    }
+
+    const nextSyncKey = initialNarad ? `${initialNarad.id}:${initialNarad.updated_at}` : "new";
+    if (syncedWorkKeyRef.current === nextSyncKey) {
+      return;
+    }
+
+    syncedWorkKeyRef.current = nextSyncKey;
+    syncedNaradContextKeyRef.current = null;
+    const nextValues = buildEmptyValues(initialNarad);
+    form.setValues(nextValues);
+    form.resetDirty(nextValues);
+  }, [form, initialNarad, opened]);
+
+  useEffect(() => {
+    if (!opened) {
+      syncedNaradContextKeyRef.current = null;
+      return;
+    }
+
+    if (!selectedNaradContext) {
+      return;
+    }
+
+    const nextContextKey = `${selectedNaradContext.id}:${selectedNaradContext.updated_at}`;
+    if (syncedNaradContextKeyRef.current === nextContextKey) {
+      return;
+    }
+
+    syncedNaradContextKeyRef.current = nextContextKey;
+    form.setFieldValue("narad_id", selectedNaradContext.id);
+    form.setFieldValue("received_at", toDateTimeLocal(selectedNaradContext.received_at));
+    form.setFieldValue("deadline_at", toDateTimeLocal(selectedNaradContext.deadline_at));
+  }, [form, opened, selectedNaradContext]);
 
   const mutation = useMutation({
     mutationFn: () => {
       const workItemsPayload = buildWorkItemsPayload(form.values);
 
       return createWork({
-        order_number: form.values.order_number,
-        client_id: form.values.client_id,
-        executor_id: form.values.executor_id || undefined,
-        doctor_id: form.values.doctor_id || undefined,
-        work_catalog_item_id: form.values.work_catalog_item_id || undefined,
-        work_type: form.values.work_type,
+        narad_id: form.values.narad_id,
+        executor_id: form.values.executor_id,
+        work_catalog_item_id: form.values.work_catalog_item_id,
         description: form.values.description || undefined,
-        doctor_name: form.values.doctor_name || undefined,
-        doctor_phone: form.values.doctor_phone || undefined,
-        patient_name: form.values.patient_name || undefined,
-        patient_age: form.values.patient_age ? Number(form.values.patient_age) : undefined,
-        patient_gender: form.values.patient_gender || undefined,
-        require_color_photo: form.values.require_color_photo,
-        face_shape: form.values.face_shape || undefined,
-        implant_system: form.values.implant_system || undefined,
-        metal_type: form.values.metal_type || undefined,
-        shade_color: form.values.shade_color || undefined,
-        tooth_formula: form.values.tooth_formula || undefined,
-        tooth_selection: form.values.tooth_selection,
         status: form.values.status as never,
         received_at: toIsoDateTime(form.values.received_at) as string,
         deadline_at: toIsoDateTime(form.values.deadline_at),
@@ -293,7 +288,6 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
         price_for_client: calculateFinalPrice(form.values.base_price_for_client, form.values.price_adjustment_percent),
         additional_expenses: form.values.additional_expenses,
         labor_hours: form.values.labor_hours,
-        amount_paid: form.values.amount_paid,
         ...(workItemsPayload ? { work_items: workItemsPayload } : {}),
         operations: buildOperationPayload(form.values.operations),
         materials: form.values.materials.filter((item) => item.material_id && Number(item.quantity) > 0)
@@ -301,8 +295,9 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
     },
     onSuccess() {
       queryClient.invalidateQueries({ queryKey: worksQueryKeys.root });
+      queryClient.invalidateQueries({ queryKey: naradsQueryKeys.root });
       showSuccessNotification("Работа создана.");
-      form.setValues(buildEmptyValues());
+      form.setValues(buildEmptyValues(initialNarad));
       onClose();
     },
     onError(error) {
@@ -321,10 +316,6 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
       ? `${executor.full_name} · ${executor.payment_category_name}`
       : executor.full_name
   }));
-  const doctorOptions = doctors.map((doctor) => ({
-    value: doctor.id,
-    label: doctor.specialization ? `${doctor.full_name} · ${doctor.specialization}` : doctor.full_name
-  }));
   const operationOptions = operations.map((operation) => ({
     value: operation.id,
     label: `${operation.code} · ${operation.name}`
@@ -333,7 +324,22 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
     value: item.id,
     label: `${item.code} · ${item.name}`
   }));
+  const naradOptions = [
+    ...(initialNarad && !openNarads.some((narad) => narad.id === initialNarad.id)
+      ? [
+          {
+            value: initialNarad.id,
+            label: `${initialNarad.narad_number} · ${initialNarad.client_name} · ${initialNarad.title}`
+          }
+        ]
+      : []),
+    ...openNarads.map((narad) => ({
+      value: narad.id,
+      label: `${narad.narad_number} · ${narad.client_name} · ${narad.title}`
+    }))
+  ];
   const finalPrice = calculateFinalPrice(form.values.base_price_for_client, form.values.price_adjustment_percent);
+  const selectedCatalogLocked = Boolean(form.values.work_catalog_item_id);
 
   const operationLinesPreview = form.values.operations.map((line) => {
     const operation = operationsById.get(line.operation_id);
@@ -353,7 +359,6 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
   });
 
   const calculatedOperationsLabor = operationLinesPreview.reduce((sum, line) => sum + line.total, 0);
-  const selectedClient = clientsById.get(form.values.client_id);
 
   useEffect(() => {
     const catalogItemId = form.values.work_catalog_item_id;
@@ -373,7 +378,7 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
     );
     const nextAdjustment = resolvedPrice.hasClientPrice
       ? "0"
-      : (selectedClient?.default_price_adjustment_percent ?? "0");
+      : (selectedClientDetailQuery.data?.default_price_adjustment_percent ?? "0");
 
     if (form.values.base_price_for_client !== resolvedPrice.price) {
       form.setFieldValue("base_price_for_client", resolvedPrice.price);
@@ -384,10 +389,8 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
   }, [
     form,
     form.values.base_price_for_client,
-    form.values.client_id,
     form.values.price_adjustment_percent,
     form.values.work_catalog_item_id,
-    selectedClient,
     selectedClientDetailQuery.data,
     workCatalogItems
   ]);
@@ -396,10 +399,34 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
     <Modal opened={opened} onClose={onClose} size="xl" title="Новая работа">
       <form onSubmit={form.onSubmit(() => mutation.mutate())}>
         <Stack gap="md">
+          {initialNarad ? (
+            <Text c="dimmed" size="sm">
+              Работа будет добавлена в наряд {initialNarad.narad_number} · {initialNarad.title}
+            </Text>
+          ) : null}
+          {selectedNaradContext ? (
+            <Text c="dimmed" size="sm">
+              Заказчик: {selectedNaradContext.client_name} · Пациент: {selectedNaradContext.patient_name ?? "—"} · Врач:{" "}
+              {selectedNaradContext.doctor_name ?? "—"}
+            </Text>
+          ) : null}
           <div className="grid gap-3 md:grid-cols-3">
-            <TextInput label="Номер заказа" {...form.getInputProps("order_number")} />
+            <Select
+              data={naradOptions}
+              disabled={Boolean(initialNarad)}
+              error={form.errors.narad_id}
+              label="Наряд"
+              placeholder="Выберите открытый наряд"
+              searchable
+              value={form.values.narad_id || null}
+              onChange={(value) => {
+                form.setFieldValue("narad_id", value ?? "");
+                syncedNaradContextKeyRef.current = null;
+              }}
+            />
             <Select
               data={workCatalogOptions}
+              error={form.errors.work_catalog_item_id}
               label="Позиция каталога"
               placeholder="Выберите работу из каталога"
               searchable
@@ -408,6 +435,7 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
                 const nextItem = workCatalogById.get(value ?? "");
                 form.setFieldValue("work_catalog_item_id", value ?? "");
                 if (!nextItem) {
+                  form.setFieldValue("work_type", "");
                   return;
                 }
 
@@ -426,28 +454,20 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
                 );
               }}
             />
-            <TextInput label="Тип работы" {...form.getInputProps("work_type")} />
+            <TextInput
+              label="Тип работы"
+              placeholder="Подставляется из позиции каталога"
+              readOnly
+              {...form.getInputProps("work_type")}
+            />
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <Select
-              data={clients.map((client) => ({ value: client.id, label: client.name }))}
-              label="Клиент"
-              placeholder="Выберите клиента"
-              value={form.values.client_id || null}
-              onChange={(value) => {
-                const nextClient = clients.find((client) => client.id === value);
-                form.setFieldValue("client_id", value ?? "");
-                form.setFieldValue("doctor_id", "");
-                if (nextClient) {
-                  form.setFieldValue("price_adjustment_percent", nextClient.default_price_adjustment_percent);
-                }
-              }}
-            />
+          <div className="grid gap-3 md:grid-cols-2">
             <Select
               data={executorOptions}
+              error={form.errors.executor_id}
               label="Ответственный исполнитель"
-              placeholder="Опционально"
+              placeholder="Выберите исполнителя"
               value={form.values.executor_id || null}
               onChange={(value) => form.setFieldValue("executor_id", value ?? "")}
             />
@@ -459,94 +479,25 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
             />
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <Select
-              clearable
-              data={doctorOptions}
-              label="Врач из справочника"
-              placeholder={form.values.client_id ? "Выберите врача клиента" : "Сначала выберите клиента"}
-              searchable
-              value={form.values.doctor_id || null}
-              onChange={(value) => {
-                const nextDoctor = doctorsById.get(value ?? "");
-                form.setFieldValue("doctor_id", value ?? "");
-                if (nextDoctor) {
-                  form.setFieldValue("doctor_name", nextDoctor.full_name);
-                  form.setFieldValue("doctor_phone", nextDoctor.phone ?? "");
-                }
-              }}
-            />
-            <TextInput label="ФИО врача" placeholder="Опционально" {...form.getInputProps("doctor_name")} />
-            <TextInput label="Телефон врача" placeholder="Опционально" {...form.getInputProps("doctor_phone")} />
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <TextInput label="Пациент" placeholder="Опционально" {...form.getInputProps("patient_name")} />
-            <div />
-            <div />
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <TextInput label="Возраст пациента" type="number" {...form.getInputProps("patient_age")} />
-            <Select
-              clearable
-              data={patientGenderOptions}
-              label="Пол пациента"
-              value={form.values.patient_gender || null}
-              onChange={(value) => form.setFieldValue("patient_gender", value ?? "")}
-            />
-            <Select
-              clearable
-              data={faceShapeOptions}
-              label="Форма лица"
-              value={form.values.face_shape || null}
-              onChange={(value) => form.setFieldValue("face_shape", value ?? "")}
-            />
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <TextInput label="Система имплантов" {...form.getInputProps("implant_system")} />
-            <TextInput label="Металл" {...form.getInputProps("metal_type")} />
-            <TextInput label="Цвет" {...form.getInputProps("shade_color")} />
-          </div>
-
-          <Checkbox
-            label="Нужна отметка о фотоаппарате для определения цвета"
-            {...form.getInputProps("require_color_photo", { type: "checkbox" })}
-          />
-
-          <Stack gap="xs">
-            <Group justify="space-between" gap="sm" wrap="wrap">
-              <Text fw={700}>Графическая зубная формула</Text>
-              <Text c="dimmed" size="sm">
-                {form.values.tooth_selection.length
-                  ? `${form.values.tooth_selection.length} зуб(ов) отмечено`
-                  : "Выбери зубы на схеме"}
-              </Text>
-            </Group>
-            <Odontogram
-              value={form.values.tooth_selection}
-              onChange={(value) => {
-                form.setFieldValue("tooth_selection", value);
-                form.setFieldValue("tooth_formula", formatToothSelectionSummary(value));
-              }}
+          <div className="grid gap-3 md:grid-cols-2">
+            <TextInput
+              disabled={naradContextLocked}
+              label="Дата приема"
+              type="datetime-local"
+              {...form.getInputProps("received_at")}
             />
             <TextInput
-              label="Сводка по формуле"
-              placeholder="Формула сформируется автоматически"
-              readOnly
-              value={form.values.tooth_formula}
+              disabled={naradContextLocked}
+              label="Дедлайн"
+              type="datetime-local"
+              {...form.getInputProps("deadline_at")}
             />
-          </Stack>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <TextInput label="Дата приема" type="datetime-local" {...form.getInputProps("received_at")} />
-            <TextInput label="Дедлайн" type="datetime-local" {...form.getInputProps("deadline_at")} />
           </div>
 
           <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
             <TextInput
               label="Базовая цена"
+              readOnly={selectedCatalogLocked}
               styles={priceFieldStyles}
               type="number"
               {...form.getInputProps("base_price_for_client")}
@@ -565,6 +516,7 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
             <TextInput label="Итоговая цена клиенту" readOnly styles={priceFieldStyles} value={finalPrice} />
             <TextInput
               label="Трудозатраты, часы"
+              readOnly={selectedCatalogLocked}
               styles={priceFieldStyles}
               type="number"
               {...form.getInputProps("labor_hours")}
@@ -575,17 +527,16 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
               type="number"
               {...form.getInputProps("additional_expenses")}
             />
-            <TextInput
-              label="Оплачено"
-              styles={priceFieldStyles}
-              type="number"
-              {...form.getInputProps("amount_paid")}
-            />
           </div>
           <Text c="dimmed" size="sm">
             Ручные трудозатраты по часам используются только если операции ниже не заполнены.
           </Text>
-          <Textarea label="Описание" minRows={3} {...form.getInputProps("description")} />
+          <Textarea
+            label="Описание"
+            minRows={3}
+            readOnly={selectedCatalogLocked}
+            {...form.getInputProps("description")}
+          />
 
           <Divider />
           <Stack gap="sm">
@@ -616,6 +567,11 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
 
             {form.values.work_items.length ? (
               <Stack gap="sm">
+                {form.errors.work_items ? (
+                  <Text c="red" size="sm">
+                    {form.errors.work_items}
+                  </Text>
+                ) : null}
                 {form.values.work_items.map((item, index) => (
                   <div key={`work-item-${index}`} className="rounded-[20px] bg-slate-50 px-4 py-4">
                     <div className="grid gap-3 md:grid-cols-[1.4fr_1fr_.7fr_.8fr_auto] md:items-end">
@@ -629,6 +585,7 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
                           const nextItem = workCatalogById.get(value ?? "");
                           form.setFieldValue(`work_items.${index}.work_catalog_item_id`, value ?? "");
                           if (!nextItem) {
+                            form.setFieldValue(`work_items.${index}.work_type`, "");
                             return;
                           }
                           const resolvedPrice = resolveCatalogPrice(
@@ -643,10 +600,9 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
                       />
                       <TextInput
                         label="Наименование"
+                        placeholder="Подставляется из позиции каталога"
+                        readOnly
                         value={item.work_type}
-                        onChange={(event) =>
-                          form.setFieldValue(`work_items.${index}.work_type`, event.currentTarget.value)
-                        }
                       />
                       <TextInput
                         label="Кол-во"
@@ -658,6 +614,7 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
                       />
                       <TextInput
                         label="Цена за ед."
+                        readOnly={Boolean(item.work_catalog_item_id)}
                         type="number"
                         value={item.unit_price}
                         onChange={(event) =>
@@ -679,6 +636,7 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
                       className="mt-3"
                       label="Описание позиции"
                       minRows={2}
+                      readOnly={Boolean(item.work_catalog_item_id)}
                       value={item.description}
                       onChange={(event) =>
                         form.setFieldValue(`work_items.${index}.description`, event.currentTarget.value)
@@ -747,9 +705,6 @@ export function WorkFormModal({ opened, onClose }: WorkFormModalProps) {
                               const nextOperation = operationsById.get(value ?? "");
                               form.setFieldValue(`operations.${index}.operation_id`, value ?? "");
                               form.setFieldValue(`operations.${index}.quantity`, nextOperation?.default_quantity ?? "1");
-                              if (!form.values.work_type.trim() && nextOperation) {
-                                form.setFieldValue("work_type", nextOperation.name);
-                              }
                             }}
                           />
                           <Select

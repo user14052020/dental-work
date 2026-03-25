@@ -1,9 +1,12 @@
 "use client";
 
 import { Button, Divider, Drawer, Group, Loader, Stack, Text } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 
 import { useClientDetailQuery } from "@/entities/clients/model/use-clients-query";
+import { paymentMethodOptions } from "@/entities/payments/model/types";
 import { DeleteClientButton } from "@/features/clients/delete-client/ui/delete-client-button";
+import { ClientDocumentsModal } from "@/features/clients/print-client-documents/ui/client-documents-modal";
 import { formatCurrency } from "@/shared/lib/formatters/format-currency";
 import { formatDateTime } from "@/shared/lib/formatters/format-date";
 import { DetailGrid } from "@/shared/ui/detail-grid";
@@ -25,6 +28,10 @@ function formatDateOnly(value?: string | null) {
 
 export function ClientDetailDrawer({ clientId, opened, onClose, onEdit }: ClientDetailDrawerProps) {
   const detailQuery = useClientDetailQuery(clientId);
+  const [documentsOpened, documentsHandlers] = useDisclosure(false);
+  const paymentMethodLabels = Object.fromEntries(
+    paymentMethodOptions.map((option) => [option.value, option.label])
+  ) as Record<string, string>;
 
   return (
     <Drawer opened={opened} onClose={onClose} position="right" size="lg" title="Карточка клиента">
@@ -42,6 +49,9 @@ export function ClientDetailDrawer({ clientId, opened, onClose, onEdit }: Client
               <Text c="dimmed">{detailQuery.data.contact_person ?? "Контактное лицо не указано"}</Text>
             </div>
             <Group>
+              <Button variant="default" onClick={documentsHandlers.open}>
+                Документы
+              </Button>
               <DeleteClientButton clientId={detailQuery.data.id} onDeleted={onClose} />
               <Button variant="light" onClick={onEdit}>
                 Редактировать
@@ -116,6 +126,28 @@ export function ClientDetailDrawer({ clientId, opened, onClose, onEdit }: Client
 
           <Divider />
           <Stack gap="sm">
+            <Text fw={700}>Последние платежи</Text>
+            {detailQuery.data.recent_payments.length ? (
+              detailQuery.data.recent_payments.map((payment) => (
+                <div key={payment.id} className="rounded-[20px] bg-slate-50 px-4 py-3">
+                  <Text fw={600}>
+                    {payment.payment_number} · {formatCurrency(payment.amount)}
+                  </Text>
+                  <Text c="dimmed" size="sm">
+                    {paymentMethodLabels[payment.method] ?? payment.method} · {formatDateTime(payment.payment_date)}
+                  </Text>
+                  <Text c="dimmed" size="sm">
+                    Распределено {formatCurrency(payment.allocated_total)} · остаток {formatCurrency(payment.unallocated_total)}
+                  </Text>
+                </div>
+              ))
+            ) : (
+              <Text c="dimmed">Платежи по клиенту пока не зарегистрированы.</Text>
+            )}
+          </Stack>
+
+          <Divider />
+          <Stack gap="sm">
             <Text fw={700}>Последние работы</Text>
             {detailQuery.data.recent_works.length ? (
               detailQuery.data.recent_works.map((work) => (
@@ -134,6 +166,15 @@ export function ClientDetailDrawer({ clientId, opened, onClose, onEdit }: Client
           </Stack>
         </Stack>
       )}
+      {detailQuery.data ? (
+        <ClientDocumentsModal
+          clientId={detailQuery.data.id}
+          clientName={detailQuery.data.legal_name ?? detailQuery.data.name}
+          clientEmail={detailQuery.data.email}
+          opened={documentsOpened}
+          onClose={documentsHandlers.close}
+        />
+      ) : null}
     </Drawer>
   );
 }

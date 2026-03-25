@@ -21,10 +21,10 @@ export function markDeliverySent(payload: DeliveryMarkSentPayload) {
   });
 }
 
-export function buildDeliveryManifestUrl(workIds: string[]) {
+export function buildDeliveryManifestUrl(naradIds: string[]) {
   const params = new URLSearchParams();
-  workIds.forEach((workId) => {
-    params.append("work_ids", workId);
+  naradIds.forEach((naradId) => {
+    params.append("narad_ids", naradId);
   });
   return `/api/proxy/delivery/manifest?${params.toString()}`;
 }

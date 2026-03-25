@@ -4,12 +4,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.dependencies import get_current_user, get_doctor_service
+from app.api.dependencies import get_current_user, get_doctor_service, require_permissions
 from app.modules.doctors.schemas import DoctorCreate, DoctorListResponse, DoctorRead, DoctorUpdate
 from app.modules.doctors.service import DoctorService
 
 
-router = APIRouter(prefix="/doctors", tags=["doctors"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/doctors",
+    tags=["doctors"],
+    dependencies=[Depends(get_current_user), Depends(require_permissions("doctors.manage"))],
+)
 
 
 @router.get("", response_model=DoctorListResponse)

@@ -4,13 +4,17 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
-from app.api.dependencies import get_client_service, get_current_user
+from app.api.dependencies import get_client_service, get_current_user, require_permissions
 from app.modules.auth.schemas import UserRead
 from app.modules.clients.schemas import ClientCreate, ClientDetailRead, ClientListResponse, ClientRead, ClientUpdate
 from app.modules.clients.service import ClientService
 
 
-router = APIRouter(prefix="/clients", tags=["clients"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/clients",
+    tags=["clients"],
+    dependencies=[Depends(get_current_user), Depends(require_permissions("clients.manage"))],
+)
 
 
 @router.get("", response_model=ClientListResponse)

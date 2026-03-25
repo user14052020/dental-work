@@ -13,14 +13,15 @@ def render_delivery_manifest_html(context: dict[str, Any]) -> str:
         <tr>
           <td>{index}</td>
           <td>{html_text(item.client_name)}</td>
-          <td>{html_text(item.order_number)}</td>
-          <td>{html_text(item.work_type)}</td>
+          <td>{html_text(item.narad_number)}</td>
+          <td>{html_text(item.title)}</td>
+          <td>{html_text(", ".join(item.work_types))}</td>
           <td>{html_text(item.patient_name)}</td>
           <td>{html_text(item.doctor_name)}</td>
           <td>{html_text(item.delivery_address)}</td>
           <td>{html_text(item.delivery_contact)}</td>
           <td>{html_text(item.delivery_phone)}</td>
-          <td class="right">{format_money(item.price_for_client)}</td>
+          <td class="right">{format_money(item.total_price)}</td>
         </tr>
         """
         for index, item in enumerate(items, start=1)
@@ -102,7 +103,7 @@ def render_delivery_manifest_html(context: dict[str, Any]) -> str:
           <div class="meta">
             <div><b>Организация:</b> {html_text(organization.legal_name)}</div>
             <div><b>Телефон:</b> {html_text(organization.phone)} · <b>Адрес:</b> {html_text(organization.mailing_address or organization.legal_address)}</div>
-            <div><b>Всего заказов:</b> {len(items)}</div>
+            <div><b>Всего нарядов:</b> {len(items)}</div>
           </div>
 
           <table>
@@ -110,8 +111,9 @@ def render_delivery_manifest_html(context: dict[str, Any]) -> str:
               <tr>
                 <th>#</th>
                 <th>Клиент</th>
-                <th>Заказ</th>
-                <th>Работа</th>
+                <th>Наряд</th>
+                <th>Заголовок</th>
+                <th>Работы</th>
                 <th>Пациент</th>
                 <th>Врач</th>
                 <th>Адрес доставки</th>

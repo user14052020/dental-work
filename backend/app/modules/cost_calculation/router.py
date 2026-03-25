@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import get_cost_calculation_service, get_current_user
+from app.api.dependencies import get_cost_calculation_service, get_current_user, require_permissions
 from app.modules.cost_calculation.schemas import CostCalculationRead, CostCalculationRequest
 from app.modules.cost_calculation.service import CostCalculationService
 
@@ -8,7 +8,7 @@ from app.modules.cost_calculation.service import CostCalculationService
 router = APIRouter(
     prefix="/cost-calculation",
     tags=["cost-calculation"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(get_current_user), Depends(require_permissions("cost_calculation.view"))],
 )
 
 
@@ -18,4 +18,3 @@ async def estimate_cost(
     service: CostCalculationService = Depends(get_cost_calculation_service),
 ) -> CostCalculationRead:
     return await service.calculate(payload)
-

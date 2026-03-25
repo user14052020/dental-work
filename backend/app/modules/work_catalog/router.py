@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.dependencies import get_current_user, get_work_catalog_service
+from app.api.dependencies import get_current_user, get_work_catalog_service, require_permissions
 from app.modules.work_catalog.schemas import (
     WorkCatalogItemCreate,
     WorkCatalogItemListResponse,
@@ -14,7 +14,11 @@ from app.modules.work_catalog.schemas import (
 from app.modules.work_catalog.service import WorkCatalogService
 
 
-router = APIRouter(prefix="/work-catalog", tags=["work_catalog"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/work-catalog",
+    tags=["work_catalog"],
+    dependencies=[Depends(get_current_user), Depends(require_permissions("work_catalog.manage"))],
+)
 
 
 @router.get("", response_model=WorkCatalogItemListResponse)

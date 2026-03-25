@@ -246,7 +246,7 @@ def build_work_search_document(
 ) -> dict[str, Any]:
     resolved_client = None if client_name is not None else _get_loaded_relation(work, "client")
     resolved_executor = None if executor_name is not None else _get_loaded_relation(work, "executor")
-    resolved_doctor = None if doctor_name is not None else _get_loaded_relation(work, "doctor")
+    resolved_narad = _get_loaded_relation(work, "narad")
     resolved_catalog_item = (
         None
         if work_catalog_item_name is not None
@@ -272,7 +272,31 @@ def build_work_search_document(
     resolved_executor_name = (
         executor_name if executor_name is not None else (resolved_executor.full_name if resolved_executor else None)
     )
-    resolved_doctor_name = doctor_name if doctor_name is not None else (resolved_doctor.full_name if resolved_doctor else None)
+    resolved_doctor_id = _resolve_narad_or_work_value(work, resolved_narad, "doctor_id")
+    resolved_doctor_name = (
+        doctor_name
+        if doctor_name is not None
+        else _resolve_narad_or_work_value(work, resolved_narad, "doctor_name")
+    )
+    resolved_doctor_phone = _resolve_narad_or_work_value(work, resolved_narad, "doctor_phone")
+    resolved_patient_name = _resolve_narad_or_work_value(work, resolved_narad, "patient_name")
+    resolved_patient_age = _resolve_narad_or_work_value(work, resolved_narad, "patient_age")
+    resolved_patient_gender = _resolve_narad_or_work_value(work, resolved_narad, "patient_gender")
+    resolved_require_color_photo = _resolve_narad_or_work_value(work, resolved_narad, "require_color_photo")
+    resolved_face_shape = _resolve_narad_or_work_value(work, resolved_narad, "face_shape")
+    resolved_implant_system = _resolve_narad_or_work_value(work, resolved_narad, "implant_system")
+    resolved_metal_type = _resolve_narad_or_work_value(work, resolved_narad, "metal_type")
+    resolved_shade_color = _resolve_narad_or_work_value(work, resolved_narad, "shade_color")
+    resolved_tooth_formula = _resolve_narad_or_work_value(work, resolved_narad, "tooth_formula")
+    resolved_tooth_selection = _resolve_narad_or_work_value(work, resolved_narad, "tooth_selection") or []
+    resolved_is_outside_work = _resolve_narad_or_work_value(work, resolved_narad, "is_outside_work")
+    resolved_outside_lab_name = _resolve_narad_or_work_value(work, resolved_narad, "outside_lab_name")
+    resolved_outside_order_number = _resolve_narad_or_work_value(work, resolved_narad, "outside_order_number")
+    resolved_outside_cost = _resolve_narad_or_work_value(work, resolved_narad, "outside_cost")
+    resolved_outside_sent_at = _resolve_narad_or_work_value(work, resolved_narad, "outside_sent_at")
+    resolved_outside_due_at = _resolve_narad_or_work_value(work, resolved_narad, "outside_due_at")
+    resolved_outside_returned_at = _resolve_narad_or_work_value(work, resolved_narad, "outside_returned_at")
+    resolved_outside_comment = _resolve_narad_or_work_value(work, resolved_narad, "outside_comment")
     resolved_catalog_item_name = (
         work_catalog_item_name
         if work_catalog_item_name is not None
@@ -336,24 +360,32 @@ def build_work_search_document(
         "client_id": work.client_id,
         "executor_name": resolved_executor_name,
         "executor_id": work.executor_id,
-        "doctor_id": getattr(work, "doctor_id", None),
-        "doctor_name": resolved_doctor_name or work.doctor_name,
+        "doctor_id": resolved_doctor_id,
+        "doctor_name": resolved_doctor_name,
         "work_catalog_item_id": getattr(work, "work_catalog_item_id", None),
         "work_catalog_item_code": resolved_catalog_item_code,
         "work_catalog_item_name": resolved_catalog_item_name,
         "work_catalog_item_category": resolved_catalog_item_category,
         "work_type": work.work_type,
         "description": work.description,
-        "doctor_phone": getattr(work, "doctor_phone", None),
-        "patient_name": work.patient_name,
-        "patient_age": _serialize_search_value(getattr(work, "patient_age", None)),
-        "patient_gender": getattr(work, "patient_gender", None),
-        "require_color_photo": _serialize_search_value(getattr(work, "require_color_photo", None)),
-        "face_shape": getattr(work, "face_shape", None),
-        "implant_system": getattr(work, "implant_system", None),
-        "metal_type": getattr(work, "metal_type", None),
-        "shade_color": getattr(work, "shade_color", None),
-        "tooth_formula": getattr(work, "tooth_formula", None),
+        "doctor_phone": resolved_doctor_phone,
+        "patient_name": resolved_patient_name,
+        "patient_age": _serialize_search_value(resolved_patient_age),
+        "patient_gender": resolved_patient_gender,
+        "require_color_photo": _serialize_search_value(resolved_require_color_photo),
+        "face_shape": resolved_face_shape,
+        "implant_system": resolved_implant_system,
+        "metal_type": resolved_metal_type,
+        "shade_color": resolved_shade_color,
+        "tooth_formula": resolved_tooth_formula,
+        "is_outside_work": _serialize_search_value(resolved_is_outside_work),
+        "outside_lab_name": resolved_outside_lab_name,
+        "outside_order_number": resolved_outside_order_number,
+        "outside_cost": _serialize_search_value(resolved_outside_cost),
+        "outside_sent_at": _serialize_search_value(resolved_outside_sent_at),
+        "outside_due_at": _serialize_search_value(resolved_outside_due_at),
+        "outside_returned_at": _serialize_search_value(resolved_outside_returned_at),
+        "outside_comment": resolved_outside_comment,
         "status": work.status,
         "received_at": _serialize_search_value(work.received_at),
         "deadline_at": _serialize_search_value(work.deadline_at),
@@ -370,7 +402,7 @@ def build_work_search_document(
         "labor_hours": _serialize_search_value(getattr(work, "labor_hours", None)),
         "labor_cost": _serialize_search_value(getattr(work, "labor_cost", None)),
         "amount_paid": _serialize_search_value(getattr(work, "amount_paid", None)),
-        "tooth_selection_summary": build_tooth_selection_search_blob(getattr(work, "tooth_selection", None) or []),
+        "tooth_selection_summary": build_tooth_selection_search_blob(resolved_tooth_selection),
         "work_item_types": resolved_work_item_types,
         "work_item_codes": resolved_work_item_codes,
         "work_item_descriptions": resolved_work_item_descriptions,
@@ -387,24 +419,32 @@ def build_work_search_document(
                 work.client_id,
                 resolved_executor_name,
                 work.executor_id,
-                getattr(work, "doctor_id", None),
-                resolved_doctor_name or work.doctor_name,
+                resolved_doctor_id,
+                resolved_doctor_name,
                 getattr(work, "work_catalog_item_id", None),
                 resolved_catalog_item_code,
                 resolved_catalog_item_name,
                 resolved_catalog_item_category,
                 work.work_type,
                 work.description,
-                getattr(work, "doctor_phone", None),
-                work.patient_name,
-                getattr(work, "patient_age", None),
-                getattr(work, "patient_gender", None),
-                getattr(work, "require_color_photo", None),
-                getattr(work, "face_shape", None),
-                getattr(work, "implant_system", None),
-                getattr(work, "metal_type", None),
-                getattr(work, "shade_color", None),
-                getattr(work, "tooth_formula", None),
+                resolved_doctor_phone,
+                resolved_patient_name,
+                resolved_patient_age,
+                resolved_patient_gender,
+                resolved_require_color_photo,
+                resolved_face_shape,
+                resolved_implant_system,
+                resolved_metal_type,
+                resolved_shade_color,
+                resolved_tooth_formula,
+                resolved_is_outside_work,
+                resolved_outside_lab_name,
+                resolved_outside_order_number,
+                resolved_outside_cost,
+                resolved_outside_sent_at,
+                resolved_outside_due_at,
+                resolved_outside_returned_at,
+                resolved_outside_comment,
                 work.status,
                 work.received_at,
                 work.deadline_at,
@@ -421,7 +461,7 @@ def build_work_search_document(
                 getattr(work, "labor_hours", None),
                 getattr(work, "labor_cost", None),
                 getattr(work, "amount_paid", None),
-                build_tooth_selection_search_blob(getattr(work, "tooth_selection", None) or []),
+                build_tooth_selection_search_blob(resolved_tooth_selection),
                 *resolved_work_item_types,
                 *resolved_work_item_codes,
                 *resolved_work_item_descriptions,
@@ -497,3 +537,11 @@ def _get_loaded_relation(instance: Any, attr_name: str, default: Any = None) -> 
         return default
 
     return loaded_value
+
+
+def _resolve_narad_or_work_value(work: Any, narad: Any, attr_name: str) -> Any:
+    if narad is not None:
+        narad_value = getattr(narad, attr_name, None)
+        if narad_value is not None:
+            return narad_value
+    return getattr(work, attr_name, None)

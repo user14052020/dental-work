@@ -12,7 +12,9 @@ from app.common.search_documents import build_work_search_document
 from app.common.services import CacheService, SearchService
 from app.core.config import settings
 from app.core.exceptions import ConflictError, NotFoundError
+from app.db.models.narad import Narad, NaradStatusLog
 from app.db.models.operation import WorkOperation, WorkOperationLog
+from app.db.models.payment import PaymentAllocation
 from app.db.models.work import Work, WorkAttachment, WorkChangeLog, WorkItem, WorkMaterial
 from app.db.unitofwork import SQLAlchemyUnitOfWork
 from app.modules.operations.schemas import WorkOperationLogRead, WorkOperationRead, WorkOperationStatusUpdate
@@ -26,12 +28,12 @@ from app.modules.works.schemas import (
     WorkItemRead,
     WorkListResponse,
     WorkMaterialUsageRead,
+    WorkPaymentAllocationRead,
     WorkPayrollSummaryRead,
     WorkRead,
     WorkReopen,
     WorkUpdateStatus,
 )
-from app.modules.works.tooth_selection import build_tooth_formula_from_selection, serialize_tooth_selection
 
 
 TWO_PLACES = Decimal("0.01")
@@ -89,19 +91,24 @@ class WorkService:
 
     async def create_work(self, payload: WorkCreate, *, actor_email: str | None = None) -> WorkRead:
         async with self._uow as uow:
-            existing_work = await uow.works.get_by_order_number(payload.order_number)
-            if existing_work:
-                raise ConflictError("Order number already exists.", code="order_number_exists")
+            narad = await uow.narads.get(payload.narad_id)
+            if narad is None:
+                raise NotFoundError("narad", payload.narad_id)
+            if narad.closed_at is not None:
+                raise ConflictError(
+                    "Cannot add work to a closed narad.",
+                    code="narad_closed",
+                )
 
-            client = await uow.clients.get(payload.client_id)
+            client = await uow.clients.get(narad.client_id)
             if client is None:
-                raise NotFoundError("client", payload.client_id)
+                raise NotFoundError("client", narad.client_id)
 
-            doctor = None
-            if payload.doctor_id:
-                doctor = await uow.doctors.get(payload.doctor_id)
-                if doctor is None:
-                    raise NotFoundError("doctor", payload.doctor_id)
+            if any(not item.work_catalog_item_id for item in payload.work_items):
+                raise ConflictError(
+                    "Each work item must reference a catalog item.",
+                    code="work_item_catalog_required",
+                )
 
             catalog_item_ids = {
                 catalog_item_id
@@ -142,31 +149,25 @@ class WorkService:
             resolved_work_items_data: list[dict[str, object]] = []
             if payload.work_items:
                 for index, item_payload in enumerate(payload.work_items):
-                    item_catalog = (
-                        catalog_items_by_id.get(item_payload.work_catalog_item_id)
-                        if item_payload.work_catalog_item_id
-                        else None
-                    )
+                    item_catalog = catalog_items_by_id.get(item_payload.work_catalog_item_id)
                     item_client_price = (
                         client_catalog_prices.get(item_catalog.id)
                         if item_catalog is not None
                         else None
                     )
-                    resolved_item_work_type = item_payload.work_type or (item_catalog.name if item_catalog else None)
-                    if not resolved_item_work_type:
-                        raise ConflictError("Each work item must have a work type.", code="work_item_type_required")
+                    if item_catalog is None:
+                        raise ConflictError(
+                            "Each work item must reference a catalog item.",
+                            code="work_item_catalog_required",
+                        )
+                    resolved_item_work_type = item_catalog.name
 
                     resolved_unit_price = item_payload.unit_price
-                    if resolved_unit_price is None and item_catalog is not None:
+                    if resolved_unit_price is None:
                         resolved_unit_price = (
                             item_client_price.price
                             if item_client_price is not None
                             else item_catalog.base_price
-                        )
-                    if resolved_unit_price is None:
-                        raise ConflictError(
-                            "Each work item without catalog link must have a unit price.",
-                            code="work_item_price_required",
                         )
 
                     quantity = item_payload.quantity.quantize(TWO_PLACES)
@@ -174,9 +175,9 @@ class WorkService:
                     resolved_work_items_data.append(
                         {
                             "catalog_item": item_catalog,
-                            "work_catalog_item_id": item_catalog.id if item_catalog else item_payload.work_catalog_item_id,
+                            "work_catalog_item_id": item_catalog.id,
                             "work_type": resolved_item_work_type,
-                            "description": item_payload.description or (item_catalog.description if item_catalog else None),
+                            "description": item_payload.description or item_catalog.description,
                             "quantity": quantity,
                             "unit_price": unit_price,
                             "total_price": (unit_price * quantity).quantize(TWO_PLACES),
@@ -195,12 +196,15 @@ class WorkService:
                 price_for_client = base_price
                 work_description = payload.description or summary_item["description"]
             else:
-                resolved_work_type = payload.work_type or (catalog_item.name if catalog_item else None)
-                if not resolved_work_type:
-                    raise ConflictError("Work type is required.", code="work_type_required")
+                if catalog_item is None:
+                    raise ConflictError(
+                        "Work catalog item is required.",
+                        code="work_catalog_item_required",
+                    )
+                resolved_work_type = catalog_item.name
 
                 resolved_base_price = payload.base_price_for_client
-                if resolved_base_price is None and catalog_item is not None:
+                if resolved_base_price is None:
                     resolved_base_price = (
                         client_catalog_price.price
                         if client_catalog_price is not None
@@ -226,7 +230,7 @@ class WorkService:
                 resolved_work_items_data.append(
                     {
                         "catalog_item": catalog_item,
-                        "work_catalog_item_id": catalog_item.id if catalog_item else payload.work_catalog_item_id,
+                        "work_catalog_item_id": catalog_item.id,
                         "work_type": resolved_work_type,
                         "description": payload.description,
                         "quantity": Decimal("1.00"),
@@ -237,8 +241,6 @@ class WorkService:
                 )
                 work_description = payload.description
 
-            tooth_selection = serialize_tooth_selection(payload.tooth_selection)
-            tooth_formula = payload.tooth_formula or build_tooth_formula_from_selection(tooth_selection)
             operation_ids = [item.operation_id for item in payload.operations]
             operations_catalog = {
                 item.id: item for item in await uow.operations.list_operations_by_ids(operation_ids)
@@ -267,7 +269,6 @@ class WorkService:
                         total_cost=total_cost,
                     )
                 )
-                await uow.materials.consume_stock(material.id, usage.quantity)
 
             if payload.operations:
                 labor_cost = Decimal("0.00")
@@ -312,30 +313,27 @@ class WorkService:
             cost_price = material_cost + labor_cost + payload.additional_expenses
             margin = price_for_client - cost_price
 
+            work_order_number = self._generate_work_order_number_for_narad(narad)
+
+            existing_work = await uow.works.get_by_order_number(work_order_number)
+            if existing_work:
+                raise ConflictError("Order number already exists.", code="order_number_exists")
+
+            resolved_received_at = narad.received_at
+            resolved_deadline_at = narad.deadline_at if narad.deadline_at else payload.deadline_at
+
             work = await uow.works.add(
                 Work(
-                    order_number=payload.order_number,
-                    client_id=payload.client_id,
+                    order_number=work_order_number,
+                    narad_id=narad.id,
+                    client_id=narad.client_id,
                     executor_id=payload.executor_id,
-                    doctor_id=payload.doctor_id,
                     work_catalog_item_id=catalog_item.id if catalog_item else payload.work_catalog_item_id,
                     work_type=resolved_work_type,
                     description=work_description,
-                    doctor_name=payload.doctor_name or (doctor.full_name if doctor else None),
-                    doctor_phone=payload.doctor_phone or (doctor.phone if doctor else None),
-                    patient_name=payload.patient_name,
-                    patient_age=payload.patient_age,
-                    patient_gender=payload.patient_gender.value if payload.patient_gender else None,
-                    require_color_photo=payload.require_color_photo,
-                    face_shape=payload.face_shape.value if payload.face_shape else None,
-                    implant_system=payload.implant_system,
-                    metal_type=payload.metal_type,
-                    shade_color=payload.shade_color,
-                    tooth_formula=tooth_formula,
-                    tooth_selection=tooth_selection or None,
                     status=payload.status.value,
-                    received_at=payload.received_at,
-                    deadline_at=payload.deadline_at,
+                    received_at=resolved_received_at,
+                    deadline_at=resolved_deadline_at,
                     delivery_sent=payload.status == WorkStatus.DELIVERED,
                     delivery_sent_at=datetime.now(timezone.utc) if payload.status == WorkStatus.DELIVERED else None,
                     base_price_for_client=base_price,
@@ -346,9 +344,10 @@ class WorkService:
                     additional_expenses=payload.additional_expenses,
                     labor_hours=payload.labor_hours,
                     labor_cost=labor_cost,
-                    amount_paid=payload.amount_paid,
+                    amount_paid=Decimal("0.00"),
                 )
             )
+            work.narad = narad
 
             work_items: list[WorkItem] = []
             for item in resolved_work_items_data:
@@ -399,27 +398,42 @@ class WorkService:
                         "status": work.status,
                         "client_name": client.name,
                         "executor_name": executor.full_name if executor else None,
-                        "doctor_id": work.doctor_id,
-                        "doctor_name": work.doctor_name,
-                        "doctor_phone": work.doctor_phone,
+                        "doctor_id": narad.doctor_id,
+                        "doctor_name": narad.doctor_name,
+                        "doctor_phone": narad.doctor_phone,
                         "work_catalog_item_id": work.work_catalog_item_id,
                         "work_type": work.work_type,
-                        "patient_name": work.patient_name,
-                        "patient_age": work.patient_age,
-                        "patient_gender": work.patient_gender,
-                        "require_color_photo": work.require_color_photo,
-                        "face_shape": work.face_shape,
-                        "implant_system": work.implant_system,
-                        "metal_type": work.metal_type,
-                        "shade_color": work.shade_color,
-                        "tooth_formula": work.tooth_formula,
-                        "tooth_selection": tooth_selection,
+                        "patient_name": narad.patient_name,
+                        "patient_age": narad.patient_age,
+                        "patient_gender": narad.patient_gender,
+                        "require_color_photo": narad.require_color_photo,
+                        "face_shape": narad.face_shape,
+                        "implant_system": narad.implant_system,
+                        "metal_type": narad.metal_type,
+                        "shade_color": narad.shade_color,
+                        "tooth_formula": narad.tooth_formula,
+                        "tooth_selection": narad.tooth_selection or [],
                         "work_items_count": len(work_items),
                         "work_item_types": [item.work_type for item in work_items],
                         "operations_count": len(work_operations),
                         "base_price_for_client": str(work.base_price_for_client),
                         "price_adjustment_percent": str(work.price_adjustment_percent),
                         "price_for_client": str(work.price_for_client),
+                    },
+                )
+            )
+            self._hydrate_narad_from_work_if_missing(narad, work)
+            self._sync_narad_lifecycle(narad, [*narad.works, work])
+            await uow.narads.add_status_log(
+                NaradStatusLog(
+                    narad_id=narad.id,
+                    action="work_added",
+                    actor_email=actor_email,
+                    from_status=narad.status,
+                    to_status=narad.status,
+                    details={
+                        "work_id": work.id,
+                        "order_number": work.order_number,
                     },
                 )
             )
@@ -433,7 +447,7 @@ class WorkService:
                 work,
                 client_name=client.name,
                 executor_name=executor.full_name if executor else None,
-                doctor_name=doctor.full_name if doctor else work.doctor_name,
+                doctor_name=narad.doctor_name,
                 work_catalog_item_name=catalog_item.name if catalog_item else None,
                 work_catalog_item_code=catalog_item.code if catalog_item else None,
                 work_catalog_item_category=catalog_item.category if catalog_item else None,
@@ -462,6 +476,9 @@ class WorkService:
             else:
                 work.delivery_sent = False
                 work.delivery_sent_at = None
+            narad = work.narad
+            if narad is not None:
+                self._sync_narad_lifecycle(narad, narad.works)
 
             await uow.works.add_change_log(
                 WorkChangeLog(
@@ -476,6 +493,20 @@ class WorkService:
                     },
                 )
             )
+            if narad is not None:
+                await uow.narads.add_status_log(
+                    NaradStatusLog(
+                        narad_id=narad.id,
+                        action="status_changed",
+                        actor_email=actor_email,
+                        from_status=previous_status,
+                        to_status=work.status,
+                        details={
+                            "work_id": work.id,
+                            "order_number": work.order_number,
+                        },
+                    )
+                )
             await uow.commit()
             client_name = work.client.name
             executor_name = work.executor.full_name if work.executor else None
@@ -505,6 +536,9 @@ class WorkService:
             if payload.status == WorkStatus.DELIVERED:
                 work.delivery_sent = True
                 work.delivery_sent_at = work.delivery_sent_at or now
+            narad = work.narad
+            if narad is not None:
+                self._sync_narad_lifecycle(narad, narad.works)
 
             await uow.works.add_change_log(
                 WorkChangeLog(
@@ -520,6 +554,21 @@ class WorkService:
                     },
                 )
             )
+            if narad is not None:
+                await uow.narads.add_status_log(
+                    NaradStatusLog(
+                        narad_id=narad.id,
+                        action="closed",
+                        actor_email=actor_email,
+                        from_status=previous_status,
+                        to_status=work.status,
+                        note=payload.note,
+                        details={
+                            "work_id": work.id,
+                            "order_number": work.order_number,
+                        },
+                    )
+                )
             await uow.commit()
 
         await self._cache.invalidate_prefix("dashboard:")
@@ -542,6 +591,9 @@ class WorkService:
             if work.delivery_sent and payload.status != WorkStatus.DELIVERED:
                 work.delivery_sent = False
                 work.delivery_sent_at = None
+            narad = work.narad
+            if narad is not None:
+                self._sync_narad_lifecycle(narad, narad.works)
 
             await uow.works.add_change_log(
                 WorkChangeLog(
@@ -556,6 +608,21 @@ class WorkService:
                     },
                 )
             )
+            if narad is not None:
+                await uow.narads.add_status_log(
+                    NaradStatusLog(
+                        narad_id=narad.id,
+                        action="reopened",
+                        actor_email=actor_email,
+                        from_status=previous_status,
+                        to_status=work.status,
+                        note=payload.note,
+                        details={
+                            "work_id": work.id,
+                            "order_number": work.order_number,
+                        },
+                    )
+                )
             await uow.commit()
 
         await self._cache.invalidate_prefix("dashboard:")
@@ -760,6 +827,8 @@ class WorkService:
                 quantity=item.quantity,
                 unit_cost=item.unit_cost,
                 total_cost=item.total_cost,
+                reserved_at=item.reserved_at,
+                consumed_at=item.consumed_at,
             )
             for item in work.materials
         ]
@@ -808,24 +877,27 @@ class WorkService:
             for log in work.change_logs
         ]
         attachments = [self._map_attachment(work.id, item) for item in work.attachments]
+        payment_allocations = [
+            self._map_payment_allocation(item)
+            for item in sorted(
+                getattr(work, "payment_allocations", []),
+                key=lambda entry: (
+                    entry.payment.payment_date if entry.payment else entry.created_at,
+                    entry.created_at,
+                ),
+                reverse=True,
+            )
+            if item.payment is not None
+        ]
         return WorkRead(
             id=work.id,
             created_at=work.created_at,
             updated_at=work.updated_at,
+            narad_id=getattr(work, "narad_id", work.id),
+            narad_number=getattr(work, "narad_number", work.order_number) or work.order_number,
             order_number=work.order_number,
             work_type=work.work_type,
-            doctor_id=work.doctor_id,
             work_catalog_item_id=work.work_catalog_item_id,
-            doctor_name=work.doctor_name,
-            doctor_phone=work.doctor_phone,
-            patient_name=work.patient_name,
-            patient_age=work.patient_age,
-            patient_gender=work.patient_gender,
-            require_color_photo=work.require_color_photo,
-            face_shape=work.face_shape,
-            implant_system=work.implant_system,
-            metal_type=work.metal_type,
-            shade_color=work.shade_color,
             status=work.status,
             received_at=work.received_at,
             deadline_at=work.deadline_at,
@@ -835,16 +907,12 @@ class WorkService:
             price_for_client=work.price_for_client,
             cost_price=work.cost_price,
             margin=work.margin,
-            client_id=work.client_id,
-            client_name=work.client.name,
             executor_id=work.executor_id,
             executor_name=work.executor.full_name if work.executor else None,
             work_catalog_item_code=work.catalog_item.code if work.catalog_item else None,
             work_catalog_item_name=work.catalog_item.name if work.catalog_item else None,
             work_catalog_item_category=work.catalog_item.category if work.catalog_item else None,
             description=work.description,
-            tooth_formula=work.tooth_formula,
-            tooth_selection=work.tooth_selection or [],
             completed_at=work.completed_at,
             closed_at=work.closed_at,
             base_price_for_client=work.base_price_for_client,
@@ -856,10 +924,89 @@ class WorkService:
             balance_due=max(work.price_for_client - work.amount_paid, Decimal("0.00")),
             work_items=work_items,
             attachments=attachments,
+            payment_allocations=payment_allocations,
             operations=operations,
             materials=materials,
             change_logs=change_logs,
         )
+
+    def _sync_narad_lifecycle(self, narad: Narad, works: list[Work]) -> None:
+        unique_works = list({work.id: work for work in works}.values())
+        if not unique_works:
+            narad.status = WorkStatus.NEW.value
+            narad.completed_at = None
+            narad.closed_at = None
+            return
+
+        narad.status = self._resolve_narad_status(unique_works)
+        received_values = [work.received_at for work in unique_works if work.received_at]
+        deadline_values = [work.deadline_at for work in unique_works if work.deadline_at]
+        if received_values:
+            narad.received_at = min(received_values)
+        if deadline_values:
+            narad.deadline_at = max(deadline_values)
+
+        terminal_statuses = {WorkStatus.COMPLETED.value, WorkStatus.DELIVERED.value, WorkStatus.CANCELLED.value}
+        if all(work.status in terminal_statuses for work in unique_works):
+            completed_values = [work.completed_at for work in unique_works if work.completed_at]
+            narad.completed_at = max(completed_values) if completed_values else narad.completed_at
+        else:
+            narad.completed_at = None
+
+        closed_values = [work.closed_at for work in unique_works if work.closed_at]
+        narad.closed_at = max(closed_values) if len(closed_values) == len(unique_works) else None
+
+    @staticmethod
+    def _hydrate_narad_from_work_if_missing(narad: Narad, work: Work) -> None:
+        if not narad.title:
+            narad.title = work.work_type
+        if not narad.description:
+            narad.description = work.description
+        if not narad.deadline_at:
+            narad.deadline_at = work.deadline_at
+
+    @staticmethod
+    def _generate_work_order_number_for_narad(narad: Narad) -> str:
+        existing_numbers = {
+            work.order_number
+            for work in list(getattr(narad, "works", []) or [])
+            if getattr(work, "order_number", None)
+        }
+        if not existing_numbers:
+            return narad.narad_number
+
+        used_sequences = set()
+        prefix = f"{narad.narad_number}-"
+        for number in existing_numbers:
+            if number == narad.narad_number:
+                used_sequences.add(1)
+                continue
+            if number.startswith(prefix):
+                suffix = number[len(prefix) :]
+                if suffix.isdigit():
+                    used_sequences.add(int(suffix))
+
+        next_sequence = max(used_sequences or {1}) + 1
+        candidate = f"{narad.narad_number}-{next_sequence:02d}"
+        while candidate in existing_numbers:
+            next_sequence += 1
+            candidate = f"{narad.narad_number}-{next_sequence:02d}"
+        return candidate
+
+    @staticmethod
+    def _resolve_narad_status(works: list[Work]) -> str:
+        statuses = {work.status for work in works}
+        if statuses == {WorkStatus.CANCELLED.value}:
+            return WorkStatus.CANCELLED.value
+        if statuses == {WorkStatus.DELIVERED.value}:
+            return WorkStatus.DELIVERED.value
+        if statuses.issubset({WorkStatus.COMPLETED.value, WorkStatus.DELIVERED.value}):
+            return WorkStatus.COMPLETED.value
+        if WorkStatus.IN_REVIEW.value in statuses:
+            return WorkStatus.IN_REVIEW.value
+        if statuses & {WorkStatus.IN_PROGRESS.value, WorkStatus.COMPLETED.value, WorkStatus.DELIVERED.value}:
+            return WorkStatus.IN_PROGRESS.value
+        return WorkStatus.NEW.value
 
     def _map_attachment(self, work_id: str, attachment: WorkAttachment) -> WorkAttachmentRead:
         return WorkAttachmentRead(
@@ -871,6 +1018,29 @@ class WorkService:
             file_size=attachment.file_size,
             uploaded_by_email=attachment.uploaded_by_email,
             download_url=self._attachments.build_download_url(work_id, attachment.id, attachment.storage_key),
+        )
+
+    @staticmethod
+    def _map_payment_allocation(allocation: PaymentAllocation) -> WorkPaymentAllocationRead:
+        payment = allocation.payment
+        loaded_allocations = payment.__dict__.get("allocations")
+        payment_allocations = loaded_allocations if loaded_allocations is not None else [allocation]
+        allocated_total = sum(
+            (item.amount for item in payment_allocations),
+            Decimal("0.00"),
+        ).quantize(TWO_PLACES)
+        return WorkPaymentAllocationRead(
+            id=allocation.id,
+            created_at=allocation.created_at,
+            updated_at=allocation.updated_at,
+            payment_id=payment.id,
+            payment_number=payment.payment_number,
+            payment_date=payment.payment_date,
+            payment_method=payment.method,
+            payment_amount=payment.amount,
+            allocated_amount=allocation.amount,
+            payment_unallocated_total=max(payment.amount - allocated_total, Decimal("0.00")).quantize(TWO_PLACES),
+            external_reference=payment.external_reference,
         )
 
     async def _reindex_work(self, work_id: str) -> None:
@@ -886,7 +1056,7 @@ class WorkService:
                 work,
                 client_name=work.client.name,
                 executor_name=work.executor.full_name if work.executor else None,
-                doctor_name=work.doctor.full_name if work.doctor else work.doctor_name,
+                doctor_name=work.narad.doctor_name if work.narad else None,
                 work_catalog_item_name=work.catalog_item.name if work.catalog_item else None,
                 work_catalog_item_code=work.catalog_item.code if work.catalog_item else None,
                 work_catalog_item_category=work.catalog_item.category if work.catalog_item else None,

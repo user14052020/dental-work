@@ -1,5 +1,6 @@
 import { PaginatedResponse } from "@/shared/types/api";
 
+import { PaymentCompact } from "@/entities/payments/model/types";
 import { WorkCompact } from "@/entities/works/model/types";
 
 export type ClientWorkCatalogPrice = {
@@ -48,6 +49,7 @@ export type Client = {
 
 export type ClientDetail = Client & {
   recent_works: WorkCompact[];
+  recent_payments: PaymentCompact[];
   work_catalog_prices: ClientWorkCatalogPrice[];
 };
 

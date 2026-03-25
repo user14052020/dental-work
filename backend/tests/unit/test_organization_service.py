@@ -62,6 +62,11 @@ async def test_get_profile_creates_default_profile_when_missing():
     assert result.legal_name == "Зуботехническая лаборатория"
     assert result.vat_mode == "without_vat"
     assert result.vat_label == "Без налога (НДС)"
+    assert result.payroll_period_start_days == [1]
+    assert result.payroll_periods_preview[0].is_current is True
+    assert result.smtp_port == 587
+    assert result.smtp_password_configured is False
+    assert result.smtp_enabled is False
 
 
 @pytest.mark.asyncio
@@ -87,6 +92,15 @@ async def test_upsert_profile_updates_existing_organization_requisites():
             recipient_name="ООО Дентал Лаб Про",
             director_name="Иванов И.И.",
             vat_mode="vat_20",
+            payroll_period_start_days=[10, 25, 10],
+            smtp_host="smtp.example.org",
+            smtp_port=465,
+            smtp_username="mailer",
+            smtp_password="secret",
+            smtp_from_email="billing@example.org",
+            smtp_from_name="Dental Lab Pro",
+            smtp_use_tls=False,
+            smtp_use_ssl=True,
         )
     )
 
@@ -99,3 +113,13 @@ async def test_upsert_profile_updates_existing_organization_requisites():
     assert result.director_name == "Иванов И.И."
     assert result.vat_mode == "vat_20"
     assert result.vat_label == "НДС 20%"
+    assert result.payroll_period_start_days == [10, 25]
+    assert result.smtp_host == "smtp.example.org"
+    assert result.smtp_port == 465
+    assert result.smtp_username == "mailer"
+    assert result.smtp_from_email == "billing@example.org"
+    assert result.smtp_from_name == "Dental Lab Pro"
+    assert result.smtp_use_tls is False
+    assert result.smtp_use_ssl is True
+    assert result.smtp_password_configured is True
+    assert result.smtp_enabled is True

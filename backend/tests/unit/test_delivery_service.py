@@ -11,7 +11,7 @@ from app.modules.delivery.schemas import DeliveryMarkSentPayload
 from app.modules.delivery.service import DeliveryService
 
 
-def build_work(*, status: str = "completed", delivery_sent: bool = False):
+def build_narad(*, status: str = "completed", delivery_sent: bool = False):
     client = SimpleNamespace(
         id=str(uuid4()),
         name="Клиника Улыбка",
@@ -24,7 +24,7 @@ def build_work(*, status: str = "completed", delivery_sent: bool = False):
     )
     executor = SimpleNamespace(id=str(uuid4()), full_name="Дмитрий Иванов")
     now = datetime.now(timezone.utc)
-    return SimpleNamespace(
+    work = SimpleNamespace(
         id=str(uuid4()),
         created_at=now,
         updated_at=now,
@@ -50,21 +50,52 @@ def build_work(*, status: str = "completed", delivery_sent: bool = False):
         attachments=[],
         change_logs=[],
     )
+    narad = SimpleNamespace(
+        id=str(uuid4()),
+        created_at=now,
+        updated_at=now,
+        narad_number="NAR-2026-0001",
+        title="Циркониевая реставрация",
+        status=status,
+        client_id=client.id,
+        client=client,
+        doctor_name="Сергей Волков",
+        patient_name="Ирина Соколова",
+        received_at=now,
+        deadline_at=now,
+        completed_at=now if status in {"completed", "delivered"} else None,
+        works=[work],
+    )
+    work.narad_id = narad.id
+    work.narad = narad
+    return narad
+
+
+class FakeNaradRepository:
+    def __init__(self, narads):
+        self._narads = {narad.id: narad for narad in narads}
+        self.last_list_kwargs = None
+
+    async def list_for_delivery(self, **kwargs):
+        self.last_list_kwargs = kwargs
+        items = list(self._narads.values())
+        sent = kwargs.get("sent")
+        if sent is True:
+            items = [item for item in items if all(work.delivery_sent for work in item.works)]
+        elif sent is False:
+            items = [item for item in items if any(not work.delivery_sent for work in item.works)]
+        return items, len(items)
+
+    async def list_for_delivery_by_ids(self, narad_ids):
+        return [self._narads[narad_id] for narad_id in narad_ids if narad_id in self._narads]
 
 
 class FakeWorkRepository:
-    def __init__(self, works):
-        self._works = {work.id: work for work in works}
+    def __init__(self, narads):
+        self._works = {work.id: work for narad in narads for work in narad.works}
         self.change_logs = []
 
-    async def list_for_delivery(self, **kwargs):
-        items = list(self._works.values())
-        sent = kwargs.get("sent")
-        if sent is not None:
-            items = [item for item in items if item.delivery_sent is sent]
-        return items, len(items)
-
-    async def list_for_delivery_by_ids(self, work_ids):
+    async def list_by_ids(self, work_ids):
         return [self._works[work_id] for work_id in work_ids if work_id in self._works]
 
     async def add_change_log(self, work_change_log):
@@ -81,8 +112,9 @@ class FakeOrganizationRepository:
 
 
 class FakeContextUow:
-    def __init__(self, works, organization):
-        self.works = FakeWorkRepository(works)
+    def __init__(self, narads, organization):
+        self.narads = FakeNaradRepository(narads)
+        self.works = FakeWorkRepository(narads)
         self.organization = FakeOrganizationRepository(organization)
         self.committed = False
 
@@ -117,15 +149,16 @@ class FakeCacheService:
 
 @pytest.mark.asyncio
 async def test_mark_sent_updates_delivery_state_and_indexes():
-    work = build_work()
+    narad = build_narad()
+    work = narad.works[0]
     organization = SimpleNamespace(display_name="ООО Северный Мост", legal_name="ООО Северный Мост", phone="+7999")
-    uow = FakeContextUow([work], organization)
+    uow = FakeContextUow([narad], organization)
     search = FakeSearchService()
     cache = FakeCacheService()
     service = DeliveryService(uow=uow, search=search, cache=cache)
 
     result = await service.mark_sent(
-        DeliveryMarkSentPayload(work_ids=[work.id]),
+        DeliveryMarkSentPayload(narad_ids=[narad.id]),
         actor_email="admin@dentallab.app",
     )
 
@@ -133,6 +166,7 @@ async def test_mark_sent_updates_delivery_state_and_indexes():
     assert result.updated_count == 1
     assert work.delivery_sent is True
     assert work.status == "delivered"
+    assert narad.status == "delivered"
     assert work.closed_at is None
     assert len(search.index_calls) == 1
     assert cache.invalidated == ["dashboard:"]
@@ -140,7 +174,7 @@ async def test_mark_sent_updates_delivery_state_and_indexes():
 
 @pytest.mark.asyncio
 async def test_render_manifest_includes_delivery_data():
-    work = build_work()
+    narad = build_narad()
     organization = SimpleNamespace(
         display_name="ООО Северный Мост",
         legal_name="ООО Северный Мост",
@@ -148,12 +182,35 @@ async def test_render_manifest_includes_delivery_data():
         mailing_address="Екатеринбург, ул. Луначарского, 80",
         legal_address="Екатеринбург, ул. Луначарского, 80",
     )
-    uow = FakeContextUow([work], organization)
+    uow = FakeContextUow([narad], organization)
     service = DeliveryService(uow=uow, search=FakeSearchService(), cache=FakeCacheService())
 
-    html = await service.render_manifest([work.id])
+    html = await service.render_manifest([narad.id])
 
     assert "Лист доставки" in html
     assert "Клиника Улыбка" in html
     assert "Марина Алексеева" in html
+    assert "NAR-2026-0001" in html
     assert "15 500,00" in html
+
+
+@pytest.mark.asyncio
+async def test_list_delivery_items_passes_sorting_to_repository():
+    narad = build_narad()
+    organization = SimpleNamespace(display_name="ООО Северный Мост")
+    uow = FakeContextUow([narad], organization)
+    service = DeliveryService(uow=uow, search=FakeSearchService(), cache=FakeCacheService())
+
+    await service.list_delivery_items(
+        page=1,
+        page_size=10,
+        search=None,
+        client_id=None,
+        executor_id=None,
+        sent=False,
+        sort_by="client_name",
+        sort_direction="desc",
+    )
+
+    assert uow.narads.last_list_kwargs["sort_by"] == "client_name"
+    assert uow.narads.last_list_kwargs["sort_direction"] == "desc"

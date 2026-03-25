@@ -9,9 +9,10 @@ from sqlalchemy.orm import selectinload
 
 from app.common.enums import WorkStatus
 from app.db.models.client import Client
-from app.db.models.doctor import Doctor
 from app.db.models.executor import Executor
+from app.db.models.narad import Narad
 from app.db.models.operation import WorkOperation
+from app.db.models.payment import Payment, PaymentAllocation
 from app.db.models.work import Work, WorkAttachment, WorkChangeLog, WorkItem, WorkMaterial
 from app.db.models.work_catalog import WorkCatalogItem
 
@@ -56,8 +57,8 @@ class WorkRepository:
             select(Work)
             .options(
                 selectinload(Work.client),
+                selectinload(Work.narad),
                 selectinload(Work.executor),
-                selectinload(Work.doctor),
                 selectinload(Work.catalog_item),
                 selectinload(Work.work_items).selectinload(WorkItem.catalog_item),
                 selectinload(Work.materials).selectinload(WorkMaterial.material),
@@ -65,6 +66,9 @@ class WorkRepository:
                 selectinload(Work.work_operations).selectinload(WorkOperation.executor_category),
                 selectinload(Work.work_operations).selectinload(WorkOperation.logs),
                 selectinload(Work.attachments),
+                selectinload(Work.payment_allocations)
+                .selectinload(PaymentAllocation.payment)
+                .selectinload(Payment.allocations),
                 selectinload(Work.change_logs),
             )
             .where(Work.id == work_id)
@@ -90,12 +94,12 @@ class WorkRepository:
     ) -> tuple[list[Work], int]:
         stmt: Select = (
             select(Work)
-            .outerjoin(Doctor, Doctor.id == Work.doctor_id)
+            .join(Narad, Narad.id == Work.narad_id)
             .outerjoin(WorkCatalogItem, WorkCatalogItem.id == Work.work_catalog_item_id)
             .options(
                 selectinload(Work.client),
+                selectinload(Work.narad),
                 selectinload(Work.executor),
-                selectinload(Work.doctor),
                 selectinload(Work.catalog_item),
             )
             .order_by(Work.received_at.desc())
@@ -103,7 +107,7 @@ class WorkRepository:
         count_stmt = (
             select(func.count(Work.id))
             .select_from(Work)
-            .outerjoin(Doctor, Doctor.id == Work.doctor_id)
+            .join(Narad, Narad.id == Work.narad_id)
             .outerjoin(WorkCatalogItem, WorkCatalogItem.id == Work.work_catalog_item_id)
         )
 
@@ -111,21 +115,20 @@ class WorkRepository:
         if order_number:
             filters.append(
                 (Work.order_number.ilike(f"%{order_number}%"))
-                | (Doctor.full_name.ilike(f"%{order_number}%"))
+                | (Narad.doctor_name.ilike(f"%{order_number}%"))
                 | (WorkCatalogItem.code.ilike(f"%{order_number}%"))
                 | (WorkCatalogItem.name.ilike(f"%{order_number}%"))
                 | (WorkCatalogItem.category.ilike(f"%{order_number}%"))
                 | (Work.work_type.ilike(f"%{order_number}%"))
                 | (Work.description.ilike(f"%{order_number}%"))
-                | (Work.doctor_name.ilike(f"%{order_number}%"))
-                | (Work.doctor_phone.ilike(f"%{order_number}%"))
-                | (Work.patient_name.ilike(f"%{order_number}%"))
-                | (Work.patient_gender.ilike(f"%{order_number}%"))
-                | (Work.face_shape.ilike(f"%{order_number}%"))
-                | (Work.implant_system.ilike(f"%{order_number}%"))
-                | (Work.metal_type.ilike(f"%{order_number}%"))
-                | (Work.shade_color.ilike(f"%{order_number}%"))
-                | (Work.tooth_formula.ilike(f"%{order_number}%"))
+                | (Narad.doctor_phone.ilike(f"%{order_number}%"))
+                | (Narad.patient_name.ilike(f"%{order_number}%"))
+                | (Narad.patient_gender.ilike(f"%{order_number}%"))
+                | (Narad.face_shape.ilike(f"%{order_number}%"))
+                | (Narad.implant_system.ilike(f"%{order_number}%"))
+                | (Narad.metal_type.ilike(f"%{order_number}%"))
+                | (Narad.shade_color.ilike(f"%{order_number}%"))
+                | (Narad.tooth_formula.ilike(f"%{order_number}%"))
             )
         if status:
             filters.append(Work.status == status)
@@ -150,8 +153,16 @@ class WorkRepository:
 
     async def list_by_client(self, client_id: str) -> list[Work]:
         result = await self.session.execute(
-            select(Work).options(selectinload(Work.client), selectinload(Work.executor)).where(Work.client_id == client_id)
+            select(Work)
+            .options(selectinload(Work.client), selectinload(Work.executor), selectinload(Work.narad))
+            .where(Work.client_id == client_id)
         )
+        return list(result.scalars().all())
+
+    async def list_by_ids(self, work_ids: list[str]) -> list[Work]:
+        if not work_ids:
+            return []
+        result = await self.session.execute(select(Work).where(Work.id.in_(work_ids)))
         return list(result.scalars().all())
 
     async def list_for_delivery(
@@ -168,12 +179,12 @@ class WorkRepository:
         stmt: Select = (
             select(Work)
             .join(Client, Client.id == Work.client_id)
-            .outerjoin(Doctor, Doctor.id == Work.doctor_id)
+            .join(Narad, Narad.id == Work.narad_id)
             .outerjoin(WorkCatalogItem, WorkCatalogItem.id == Work.work_catalog_item_id)
             .options(
                 selectinload(Work.client),
+                selectinload(Work.narad),
                 selectinload(Work.executor),
-                selectinload(Work.doctor),
                 selectinload(Work.catalog_item),
             )
             .where(Work.status.in_([WorkStatus.COMPLETED.value, WorkStatus.DELIVERED.value]))
@@ -183,7 +194,7 @@ class WorkRepository:
             select(func.count(Work.id))
             .select_from(Work)
             .join(Client, Client.id == Work.client_id)
-            .outerjoin(Doctor, Doctor.id == Work.doctor_id)
+            .join(Narad, Narad.id == Work.narad_id)
             .outerjoin(WorkCatalogItem, WorkCatalogItem.id == Work.work_catalog_item_id)
             .where(Work.status.in_([WorkStatus.COMPLETED.value, WorkStatus.DELIVERED.value]))
         )
@@ -193,14 +204,13 @@ class WorkRepository:
             filters.append(
                 or_(
                     Work.order_number.ilike(f"%{search}%"),
-                    Doctor.full_name.ilike(f"%{search}%"),
+                    Narad.doctor_name.ilike(f"%{search}%"),
                     WorkCatalogItem.code.ilike(f"%{search}%"),
                     WorkCatalogItem.name.ilike(f"%{search}%"),
                     WorkCatalogItem.category.ilike(f"%{search}%"),
                     Work.work_type.ilike(f"%{search}%"),
                     Work.description.ilike(f"%{search}%"),
-                    Work.doctor_name.ilike(f"%{search}%"),
-                    Work.patient_name.ilike(f"%{search}%"),
+                    Narad.patient_name.ilike(f"%{search}%"),
                     Client.name.ilike(f"%{search}%"),
                     Client.contact_person.ilike(f"%{search}%"),
                     Client.phone.ilike(f"%{search}%"),
@@ -235,8 +245,8 @@ class WorkRepository:
             select(Work)
             .options(
                 selectinload(Work.client),
+                selectinload(Work.narad),
                 selectinload(Work.executor),
-                selectinload(Work.doctor),
                 selectinload(Work.catalog_item),
                 selectinload(Work.work_items).selectinload(WorkItem.catalog_item),
             )
@@ -251,7 +261,7 @@ class WorkRepository:
             .options(
                 selectinload(Work.client),
                 selectinload(Work.executor),
-                selectinload(Work.doctor),
+                selectinload(Work.narad),
                 selectinload(Work.catalog_item),
                 selectinload(Work.work_items).selectinload(WorkItem.catalog_item),
                 selectinload(Work.materials).selectinload(WorkMaterial.material),

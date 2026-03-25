@@ -15,9 +15,9 @@ class Work(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "works"
 
     order_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    narad_id: Mapped[str] = mapped_column(ForeignKey("narads.id", ondelete="CASCADE"), index=True)
     client_id: Mapped[str] = mapped_column(ForeignKey("clients.id", ondelete="RESTRICT"), index=True)
     executor_id: Mapped[Optional[str]] = mapped_column(ForeignKey("executors.id", ondelete="SET NULL"), nullable=True)
-    doctor_id: Mapped[Optional[str]] = mapped_column(ForeignKey("doctors.id", ondelete="SET NULL"), nullable=True, index=True)
     work_catalog_item_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("work_catalog_items.id", ondelete="SET NULL"),
         nullable=True,
@@ -25,18 +25,6 @@ class Work(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     work_type: Mapped[str] = mapped_column(String(255), index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    doctor_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
-    doctor_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    patient_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
-    patient_age: Mapped[Optional[int]] = mapped_column(nullable=True)
-    patient_gender: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, index=True)
-    require_color_photo: Mapped[bool] = mapped_column(default=False)
-    face_shape: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    implant_system: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    metal_type: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    shade_color: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    tooth_formula: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    tooth_selection: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default=WorkStatus.NEW.value, index=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     deadline_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
@@ -54,9 +42,9 @@ class Work(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     labor_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
     amount_paid: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
 
+    narad = relationship("Narad", back_populates="works")
     client = relationship("Client", back_populates="works")
     executor = relationship("Executor", back_populates="works")
-    doctor = relationship("Doctor", back_populates="works")
     catalog_item = relationship("WorkCatalogItem", back_populates="works")
     work_items = relationship(
         "WorkItem",
@@ -72,6 +60,12 @@ class Work(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="WorkAttachment.created_at.desc()",
     )
+    payment_allocations = relationship(
+        "PaymentAllocation",
+        back_populates="work",
+        cascade="all, delete-orphan",
+        order_by="PaymentAllocation.created_at.desc()",
+    )
     change_logs = relationship(
         "WorkChangeLog",
         back_populates="work",
@@ -83,6 +77,76 @@ class Work(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     def is_closed(self) -> bool:
         return self.closed_at is not None
 
+    @property
+    def narad_number(self) -> str | None:
+        narad = self.__dict__.get("narad")
+        return narad.narad_number if narad is not None else self.order_number
+
+    @property
+    def doctor_id(self) -> str | None:
+        narad = self.__dict__.get("narad")
+        return narad.doctor_id if narad is not None else None
+
+    @property
+    def doctor_name(self) -> str | None:
+        narad = self.__dict__.get("narad")
+        return narad.doctor_name if narad is not None else None
+
+    @property
+    def doctor_phone(self) -> str | None:
+        narad = self.__dict__.get("narad")
+        return narad.doctor_phone if narad is not None else None
+
+    @property
+    def patient_name(self) -> str | None:
+        narad = self.__dict__.get("narad")
+        return narad.patient_name if narad is not None else None
+
+    @property
+    def patient_age(self) -> int | None:
+        narad = self.__dict__.get("narad")
+        return narad.patient_age if narad is not None else None
+
+    @property
+    def patient_gender(self) -> str | None:
+        narad = self.__dict__.get("narad")
+        return narad.patient_gender if narad is not None else None
+
+    @property
+    def require_color_photo(self) -> bool:
+        narad = self.__dict__.get("narad")
+        return bool(narad.require_color_photo) if narad is not None else False
+
+    @property
+    def face_shape(self) -> str | None:
+        narad = self.__dict__.get("narad")
+        return narad.face_shape if narad is not None else None
+
+    @property
+    def implant_system(self) -> str | None:
+        narad = self.__dict__.get("narad")
+        return narad.implant_system if narad is not None else None
+
+    @property
+    def metal_type(self) -> str | None:
+        narad = self.__dict__.get("narad")
+        return narad.metal_type if narad is not None else None
+
+    @property
+    def shade_color(self) -> str | None:
+        narad = self.__dict__.get("narad")
+        return narad.shade_color if narad is not None else None
+
+    @property
+    def tooth_formula(self) -> str | None:
+        narad = self.__dict__.get("narad")
+        return narad.tooth_formula if narad is not None else None
+
+    @property
+    def tooth_selection(self) -> list[dict[str, Any]] | None:
+        narad = self.__dict__.get("narad")
+        return narad.tooth_selection if narad is not None else None
+
 
 class WorkMaterial(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "work_materials"
@@ -92,6 +156,8 @@ class WorkMaterial(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal("0.000"))
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
     total_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
+    reserved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     work = relationship("Work", back_populates="materials")
     material = relationship("Material", back_populates="work_materials")

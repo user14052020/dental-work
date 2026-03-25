@@ -28,3 +28,4 @@ class Executor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     works = relationship("Work", back_populates="executor")
     payment_category = relationship("ExecutorCategory", back_populates="executors")
     work_operations = relationship("WorkOperation", back_populates="executor")
+    user = relationship("User", back_populates="executor", uselist=False)

@@ -11,7 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
-from app.common.enums import MaterialUnit, WorkStatus
+from app.common.enums import MaterialUnit, StockMovementType, WorkStatus
+from app.common.permissions import DEFAULT_ADMIN_PERMISSION_CODES
 from app.common.search_documents import (
     build_client_search_document,
     build_doctor_search_document,
@@ -28,11 +29,16 @@ from app.core.security import create_access_token, hash_password
 from app.db.engine import engine
 from app.db.models.client import Client
 from app.db.models.client_work_catalog_price import ClientWorkCatalogPrice
+from app.db.models.contractor import Contractor
 from app.db.models.doctor import Doctor
 from app.db.models.executor import Executor
+from app.db.models.inventory_adjustment import InventoryAdjustment, InventoryAdjustmentItem
 from app.db.models.material import Material
+from app.db.models.material_receipt import MaterialReceipt, MaterialReceiptItem, StockMovement
+from app.db.models.narad import Narad, NaradStatusLog
 from app.db.models.operation import ExecutorCategory, OperationCatalog, OperationCategoryRate, WorkOperation, WorkOperationLog
 from app.db.models.organization import OrganizationProfile
+from app.db.models.payment import Payment, PaymentAllocation
 from app.db.models.user import User
 from app.db.models.work import Work, WorkChangeLog, WorkItem, WorkMaterial
 from app.db.models.work_catalog import WorkCatalogItem, WorkCatalogItemOperation
@@ -89,6 +95,7 @@ DEMO_ORGANIZATION_DATA = {
     "accountant_name": "Смирнов К.К.",
     "vat_mode": "without_vat",
     "vat_label": "Без налога (НДС)",
+    "payroll_period_start_days": [10, 25],
     "comment": "Основная организация для печатных форм",
 }
 
@@ -275,7 +282,7 @@ DEMO_MATERIAL_DATA = {
     "category": "Керамика",
     "unit": MaterialUnit.PIECE.value,
     "stock": Decimal("24.000"),
-    "purchase_price": Decimal("5200.00"),
+    "purchase_price": Decimal("5450.00"),
     "average_price": Decimal("5450.00"),
     "supplier": "Дент Снаб",
     "min_stock": Decimal("5.000"),
@@ -318,7 +325,53 @@ DEMO_WORK_DATA = {
     "price_for_client": Decimal("15500.00"),
     "additional_expenses": Decimal("650.00"),
     "labor_hours": Decimal("3.50"),
-    "amount_paid": Decimal("5000.00"),
+    "amount_paid": Decimal("0.00"),
+}
+
+DEMO_PAYMENT_DATA = {
+    "payment_number": "PAY-2026-0001",
+    "payment_date": datetime(2026, 3, 12, 10, 30, tzinfo=timezone.utc),
+    "method": "bank_transfer",
+    "amount": Decimal("5000.00"),
+    "external_reference": "INV-2026-0312",
+    "comment": "Демонстрационная частичная оплата по заказу",
+}
+
+DEMO_CONTRACTOR_DATA = {
+    "name": "Лаборатория Партнер",
+    "contact_person": "Алексей Новиков",
+    "phone": "+79995550077",
+    "email": "partner@lab-outsource.ru",
+    "address": "620014, Екатеринбург, ул. Радищева, 12",
+    "comment": "Внешняя лаборатория для облицовки и финишных операций",
+    "is_active": True,
+}
+
+DEMO_OUTSIDE_WORK_DATA = {
+    "is_outside_work": True,
+    "outside_order_number": "EXT-2026-001",
+    "outside_cost": Decimal("4200.00"),
+    "outside_sent_at": datetime(2026, 3, 9, 11, 0, tzinfo=timezone.utc),
+    "outside_due_at": datetime(2026, 3, 11, 18, 0, tzinfo=timezone.utc),
+    "outside_returned_at": datetime(2026, 3, 11, 16, 30, tzinfo=timezone.utc),
+    "outside_comment": "Передавался подрядчику на облицовку и вернулся в лабораторию.",
+}
+
+DEMO_RECEIPT_DATA = {
+    "receipt_number": "RCPT-2026-0001",
+    "received_at": datetime(2026, 3, 10, 9, 15, tzinfo=timezone.utc),
+    "supplier": DEMO_MATERIAL_DATA["supplier"],
+    "comment": "Демонстрационный приход материалов на склад",
+    "quantity": Decimal("25.000"),
+    "unit_price": DEMO_MATERIAL_DATA["average_price"],
+}
+
+DEMO_INVENTORY_ADJUSTMENT_DATA = {
+    "adjustment_number": "INV-2026-0001",
+    "recorded_at": datetime(2026, 3, 14, 18, 45, tzinfo=timezone.utc),
+    "comment": "Демонстрационная плановая инвентаризация склада",
+    "actual_stock": Decimal("23.500"),
+    "item_comment": "Недостача после контрольного пересчета",
 }
 
 DEMO_WORK_ITEMS = [
@@ -344,14 +397,21 @@ async def ensure_demo_admin() -> str:
         if user is None:
             user = await uow.users.add(
                 User(
+                    full_name="Системный администратор",
                     email=DEMO_ADMIN_EMAIL,
+                    job_title="Администратор лаборатории",
                     hashed_password=hash_password(DEMO_ADMIN_PASSWORD),
                     is_active=True,
+                    permission_codes=DEFAULT_ADMIN_PERMISSION_CODES,
                 )
             )
         else:
+            user.full_name = "Системный администратор"
+            user.job_title = "Администратор лаборатории"
             user.hashed_password = hash_password(DEMO_ADMIN_PASSWORD)
             user.is_active = True
+            user.is_fired = False
+            user.permission_codes = DEFAULT_ADMIN_PERMISSION_CODES
         await uow.commit()
         return create_access_token(user.id)
 
@@ -422,6 +482,7 @@ def _apply_material_data(material: Material) -> None:
     material.category = DEMO_MATERIAL_DATA["category"]
     material.unit = DEMO_MATERIAL_DATA["unit"]
     material.stock = DEMO_MATERIAL_DATA["stock"]
+    material.reserved_stock = Decimal("0.000")
     material.purchase_price = DEMO_MATERIAL_DATA["purchase_price"]
     material.average_price = DEMO_MATERIAL_DATA["average_price"]
     material.supplier = DEMO_MATERIAL_DATA["supplier"]
@@ -498,8 +559,7 @@ def _apply_work_catalog_data(
     item.default_duration_hours = catalog_data["default_duration_hours"]
     item.is_active = catalog_data["is_active"]
     item.sort_order = catalog_data["sort_order"]
-    if "default_operations" not in item.__dict__:
-        set_committed_value(item, "default_operations", [])
+    set_committed_value(item, "default_operations", [])
     item.default_operations = _build_work_catalog_templates(catalog_data, operations_by_code=operations_by_code)
 
 
@@ -518,24 +578,10 @@ def _apply_work_data(
     work.order_number = DEMO_WORK_DATA["order_number"]
     work.client_id = client.id
     work.executor_id = executor.id
-    work.doctor_id = doctor.id
     work.work_catalog_item_id = catalog_item.id
-    work.doctor = doctor
     work.catalog_item = catalog_item
     work.work_type = catalog_item.name
     work.description = DEMO_WORK_DATA["description"]
-    work.doctor_name = doctor.full_name
-    work.doctor_phone = doctor.phone
-    work.patient_name = DEMO_WORK_DATA["patient_name"]
-    work.patient_age = DEMO_WORK_DATA["patient_age"]
-    work.patient_gender = DEMO_WORK_DATA["patient_gender"]
-    work.require_color_photo = DEMO_WORK_DATA["require_color_photo"]
-    work.face_shape = DEMO_WORK_DATA["face_shape"]
-    work.implant_system = DEMO_WORK_DATA["implant_system"]
-    work.metal_type = DEMO_WORK_DATA["metal_type"]
-    work.shade_color = DEMO_WORK_DATA["shade_color"]
-    work.tooth_selection = DEMO_WORK_DATA["tooth_selection"]
-    work.tooth_formula = build_tooth_formula_from_selection(DEMO_WORK_DATA["tooth_selection"])
     work.status = DEMO_WORK_DATA["status"]
     work.received_at = datetime.now(timezone.utc)
     work.deadline_at = datetime.now(timezone.utc) + timedelta(days=3)
@@ -552,8 +598,7 @@ def _apply_work_data(
     work.amount_paid = DEMO_WORK_DATA["amount_paid"]
     work.cost_price = total_cost
     work.margin = DEMO_WORK_DATA["price_for_client"] - total_cost
-    if "work_items" not in work.__dict__:
-        set_committed_value(work, "work_items", [])
+    set_committed_value(work, "work_items", [])
     work.work_items = _build_demo_work_items(catalog_item=catalog_item)
 
 
@@ -606,6 +651,142 @@ def _apply_material_usage_data(work_material: WorkMaterial, *, work: Work, mater
     work_material.quantity = quantity
     work_material.unit_cost = unit_cost
     work_material.total_cost = total_cost
+    work_material.reserved_at = None
+    work_material.consumed_at = work.closed_at
+
+
+async def _rebuild_demo_stock_flow(
+    uow: SQLAlchemyUnitOfWork,
+    *,
+    material: Material,
+    work: Work,
+) -> MaterialReceipt:
+    existing_movements = (
+        await uow.session.execute(select(StockMovement).where(StockMovement.material_id == material.id))
+    ).scalars().all()
+    for movement in existing_movements:
+        await uow.session.delete(movement)
+
+    existing_receipts = (
+        await uow.session.execute(
+            select(MaterialReceipt).where(MaterialReceipt.receipt_number == DEMO_RECEIPT_DATA["receipt_number"])
+        )
+    ).scalars().all()
+    for receipt in existing_receipts:
+        await uow.session.delete(receipt)
+
+    await uow.session.flush()
+
+    material.stock = Decimal("0.000")
+    material.reserved_stock = Decimal("0.000")
+    material.purchase_price = Decimal("0.00")
+    material.average_price = Decimal("0.00")
+    material.purchase_price = DEMO_RECEIPT_DATA["unit_price"]
+    material.average_price = DEMO_RECEIPT_DATA["unit_price"]
+
+    receipt = await uow.receipts.add(
+        MaterialReceipt(
+            receipt_number=DEMO_RECEIPT_DATA["receipt_number"],
+            received_at=DEMO_RECEIPT_DATA["received_at"],
+            supplier=DEMO_RECEIPT_DATA["supplier"],
+            comment=DEMO_RECEIPT_DATA["comment"],
+        )
+    )
+    receipt_item = await uow.receipts.add_item(
+        MaterialReceiptItem(
+            receipt_id=receipt.id,
+            material_id=material.id,
+            quantity=DEMO_RECEIPT_DATA["quantity"],
+            unit_price=DEMO_RECEIPT_DATA["unit_price"],
+            total_price=(DEMO_RECEIPT_DATA["quantity"] * DEMO_RECEIPT_DATA["unit_price"]).quantize(Decimal("0.01")),
+            sort_order=0,
+        )
+    )
+    receipt_item.material = material
+
+    await uow.materials.change_stock(
+        material.id,
+        quantity_delta=DEMO_RECEIPT_DATA["quantity"],
+        movement_type=StockMovementType.RECEIPT.value,
+        unit_cost=DEMO_RECEIPT_DATA["unit_price"],
+        comment=f"Приход {receipt.receipt_number}",
+        receipt_id=receipt.id,
+    )
+    await uow.materials.change_stock(
+        material.id,
+        quantity_delta=Decimal("-1.000"),
+        movement_type=StockMovementType.CONSUME.value,
+        unit_cost=material.average_price,
+        comment=f"Списание под заказ {work.order_number}",
+        work_id=work.id,
+    )
+    return receipt
+
+
+async def _rebuild_demo_inventory_adjustment(
+    uow: SQLAlchemyUnitOfWork,
+    *,
+    material: Material,
+) -> InventoryAdjustment:
+    existing_adjustments = (
+        await uow.session.execute(
+            select(InventoryAdjustment).where(
+                InventoryAdjustment.adjustment_number == DEMO_INVENTORY_ADJUSTMENT_DATA["adjustment_number"]
+            )
+        )
+    ).scalars().all()
+    for adjustment in existing_adjustments:
+        existing_movements = (
+            await uow.session.execute(
+                select(StockMovement).where(StockMovement.inventory_adjustment_id == adjustment.id)
+            )
+        ).scalars().all()
+        for movement in existing_movements:
+            await uow.session.delete(movement)
+        await uow.session.delete(adjustment)
+
+    await uow.session.flush()
+
+    expected_stock = material.stock.quantize(Decimal("0.001"))
+    actual_stock = DEMO_INVENTORY_ADJUSTMENT_DATA["actual_stock"].quantize(Decimal("0.001"))
+    quantity_delta = (actual_stock - expected_stock).quantize(Decimal("0.001"))
+    unit_cost = material.average_price.quantize(Decimal("0.01"))
+    total_cost = (unit_cost * abs(quantity_delta)).quantize(Decimal("0.01"))
+
+    adjustment = await uow.inventory_adjustments.add(
+        InventoryAdjustment(
+            adjustment_number=DEMO_INVENTORY_ADJUSTMENT_DATA["adjustment_number"],
+            recorded_at=DEMO_INVENTORY_ADJUSTMENT_DATA["recorded_at"],
+            comment=DEMO_INVENTORY_ADJUSTMENT_DATA["comment"],
+        )
+    )
+    adjustment_item = await uow.inventory_adjustments.add_item(
+        InventoryAdjustmentItem(
+            adjustment_id=adjustment.id,
+            material_id=material.id,
+            expected_stock=expected_stock,
+            actual_stock=actual_stock,
+            quantity_delta=quantity_delta,
+            unit_cost=unit_cost,
+            total_cost=total_cost,
+            sort_order=0,
+            comment=DEMO_INVENTORY_ADJUSTMENT_DATA["item_comment"],
+        )
+    )
+    adjustment_item.material = material
+
+    if quantity_delta != Decimal("0.000"):
+        await uow.materials.change_stock(
+            material.id,
+            quantity_delta=quantity_delta,
+            movement_type=StockMovementType.INVENTORY.value,
+            unit_cost=unit_cost,
+            comment=DEMO_INVENTORY_ADJUSTMENT_DATA["item_comment"],
+            inventory_adjustment_id=adjustment.id,
+            respect_reservations=False,
+        )
+
+    return adjustment
 
 
 def _new_client() -> Client:
@@ -661,6 +842,18 @@ def _new_doctor(*, client_id: str, doctor_data: dict) -> Doctor:
     )
 
 
+def _new_contractor() -> Contractor:
+    return Contractor(
+        name=DEMO_CONTRACTOR_DATA["name"],
+        contact_person=DEMO_CONTRACTOR_DATA["contact_person"],
+        phone=DEMO_CONTRACTOR_DATA["phone"],
+        email=DEMO_CONTRACTOR_DATA["email"],
+        address=DEMO_CONTRACTOR_DATA["address"],
+        comment=DEMO_CONTRACTOR_DATA["comment"],
+        is_active=DEMO_CONTRACTOR_DATA["is_active"],
+    )
+
+
 def _new_executor_category(category_data: dict) -> ExecutorCategory:
     return ExecutorCategory(
         code=category_data["code"],
@@ -707,18 +900,13 @@ def _new_operation(*, category: ExecutorCategory) -> OperationCatalog:
     return operation
 
 
-def _new_work(*, client_id: str, executor_id: str, doctor_id: str, catalog_item_id: str) -> Work:
-    materials_cost = DEMO_MATERIAL_DATA["average_price"]
-    labor_cost = DEMO_OPERATION_DATA["labor_rate"] * DEMO_OPERATION_DATA["quantity"]
-    total_cost = materials_cost + DEMO_WORK_DATA["additional_expenses"] + labor_cost
-
-    work = Work(
-        order_number=DEMO_WORK_DATA["order_number"],
+def _new_narad(*, client_id: str, doctor_id: str, contractor_id: str, catalog_item_id: str) -> Narad:
+    narad = Narad(
+        narad_number=DEMO_WORK_DATA["order_number"],
         client_id=client_id,
-        executor_id=executor_id,
         doctor_id=doctor_id,
-        work_catalog_item_id=catalog_item_id,
-        work_type=DEMO_WORK_CATALOG_FIXTURES[0]["name"],
+        contractor_id=contractor_id,
+        title=DEMO_WORK_CATALOG_FIXTURES[0]["name"],
         description=DEMO_WORK_DATA["description"],
         doctor_name=DEMO_DOCTOR_FIXTURES[0]["full_name"],
         doctor_phone=DEMO_DOCTOR_FIXTURES[0]["phone"],
@@ -732,6 +920,30 @@ def _new_work(*, client_id: str, executor_id: str, doctor_id: str, catalog_item_
         shade_color=DEMO_WORK_DATA["shade_color"],
         tooth_selection=DEMO_WORK_DATA["tooth_selection"],
         tooth_formula=build_tooth_formula_from_selection(DEMO_WORK_DATA["tooth_selection"]),
+        status=DEMO_WORK_DATA["status"],
+        received_at=datetime.now(timezone.utc),
+        deadline_at=datetime.now(timezone.utc) + timedelta(days=3),
+        completed_at=datetime.now(timezone.utc),
+        closed_at=datetime.now(timezone.utc),
+    )
+    narad.outside_lab_name = DEMO_CONTRACTOR_DATA["name"]
+    _apply_outside_work_data(narad, contractor_id=contractor_id)
+    return narad
+
+
+def _new_work(*, narad_id: str, client_id: str, executor_id: str, doctor_id: str, catalog_item_id: str) -> Work:
+    materials_cost = DEMO_MATERIAL_DATA["average_price"]
+    labor_cost = DEMO_OPERATION_DATA["labor_rate"] * DEMO_OPERATION_DATA["quantity"]
+    total_cost = materials_cost + DEMO_WORK_DATA["additional_expenses"] + labor_cost
+
+    work = Work(
+        order_number=DEMO_WORK_DATA["order_number"],
+        narad_id=narad_id,
+        client_id=client_id,
+        executor_id=executor_id,
+        work_catalog_item_id=catalog_item_id,
+        work_type=DEMO_WORK_CATALOG_FIXTURES[0]["name"],
+        description=DEMO_WORK_DATA["description"],
         status=DEMO_WORK_DATA["status"],
         received_at=datetime.now(timezone.utc),
         deadline_at=datetime.now(timezone.utc) + timedelta(days=3),
@@ -752,9 +964,50 @@ def _new_work(*, client_id: str, executor_id: str, doctor_id: str, catalog_item_
     return work
 
 
+def _sync_narad_from_work(narad: Narad, work: Work, *, contractor_id: str) -> None:
+    narad.client_id = work.client_id
+    narad.title = work.work_type
+    narad.description = work.description
+    narad.require_color_photo = DEMO_WORK_DATA["require_color_photo"]
+    narad.face_shape = DEMO_WORK_DATA["face_shape"]
+    narad.implant_system = DEMO_WORK_DATA["implant_system"]
+    narad.metal_type = DEMO_WORK_DATA["metal_type"]
+    narad.shade_color = DEMO_WORK_DATA["shade_color"]
+    narad.tooth_selection = DEMO_WORK_DATA["tooth_selection"]
+    narad.tooth_formula = build_tooth_formula_from_selection(DEMO_WORK_DATA["tooth_selection"])
+    narad.status = work.status
+    narad.received_at = work.received_at
+    narad.deadline_at = work.deadline_at
+    narad.completed_at = work.completed_at
+    narad.closed_at = work.closed_at
+    _apply_outside_work_data(narad, contractor_id=contractor_id)
+
+
+def _apply_outside_work_data(narad: Narad, *, contractor_id: str) -> None:
+    narad.contractor_id = contractor_id
+    narad.is_outside_work = DEMO_OUTSIDE_WORK_DATA["is_outside_work"]
+    narad.outside_lab_name = DEMO_CONTRACTOR_DATA["name"]
+    narad.outside_order_number = DEMO_OUTSIDE_WORK_DATA["outside_order_number"]
+    narad.outside_cost = DEMO_OUTSIDE_WORK_DATA["outside_cost"]
+    narad.outside_sent_at = DEMO_OUTSIDE_WORK_DATA["outside_sent_at"]
+    narad.outside_due_at = DEMO_OUTSIDE_WORK_DATA["outside_due_at"]
+    narad.outside_returned_at = DEMO_OUTSIDE_WORK_DATA["outside_returned_at"]
+    narad.outside_comment = DEMO_OUTSIDE_WORK_DATA["outside_comment"]
+
+
 async def ensure_demo_entities(
     search: SearchService, cache: CacheService
-) -> tuple[OrganizationProfile, Client, Executor, Material, Work, Doctor, WorkCatalogItem]:
+) -> tuple[
+    OrganizationProfile,
+    Client,
+    Executor,
+    Material,
+    Work,
+    Doctor,
+    WorkCatalogItem,
+    MaterialReceipt,
+    InventoryAdjustment,
+]:
     async with SQLAlchemyUnitOfWork() as uow:
         organization = await uow.organization.get_profile()
         if organization is None:
@@ -780,6 +1033,7 @@ async def ensure_demo_entities(
         work_summary = await uow.works.get_by_order_number(DEMO_WORK_ORDER_NUMBER)
         work = await uow.works.get(work_summary.id) if work_summary else None
         work_existed = work is not None
+        narad = work.narad if work is not None and getattr(work, "narad", None) is not None else None
 
         executors: list[Executor] = []
         for executor_fixture in DEMO_EXECUTOR_FIXTURES:
@@ -837,6 +1091,18 @@ async def ensure_demo_entities(
         _apply_client_data(client)
         _apply_operation_data(operation, category=primary_category)
 
+        contractor_result = await uow.session.execute(select(Contractor).where(Contractor.name == DEMO_CONTRACTOR_DATA["name"]))
+        contractor = contractor_result.scalar_one_or_none()
+        if contractor is None:
+            contractor = await uow.contractors.add(_new_contractor())
+        else:
+            contractor.contact_person = DEMO_CONTRACTOR_DATA["contact_person"]
+            contractor.phone = DEMO_CONTRACTOR_DATA["phone"]
+            contractor.email = DEMO_CONTRACTOR_DATA["email"]
+            contractor.address = DEMO_CONTRACTOR_DATA["address"]
+            contractor.comment = DEMO_CONTRACTOR_DATA["comment"]
+            contractor.is_active = DEMO_CONTRACTOR_DATA["is_active"]
+
         doctors: list[Doctor] = []
         for doctor_fixture in DEMO_DOCTOR_FIXTURES:
             result = await uow.session.execute(select(Doctor).where(Doctor.email == doctor_fixture["email"]))
@@ -887,8 +1153,7 @@ async def ensure_demo_entities(
         for existing_catalog_price in existing_catalog_prices:
             await uow.session.delete(existing_catalog_price)
         await uow.session.flush()
-        if "catalog_prices" not in client.__dict__:
-            set_committed_value(client, "catalog_prices", [])
+        set_committed_value(client, "catalog_prices", [])
         client.catalog_prices = [
             ClientWorkCatalogPrice(
                 work_catalog_item_id=catalog_items_by_code[price_fixture["code"]].id,
@@ -902,9 +1167,19 @@ async def ensure_demo_entities(
 
         primary_doctor = doctors[0]
         primary_catalog_item = catalog_items[0]
+        if narad is None:
+            narad = await uow.narads.add(
+                _new_narad(
+                    client_id=client.id,
+                    doctor_id=primary_doctor.id,
+                    contractor_id=contractor.id,
+                    catalog_item_id=primary_catalog_item.id,
+                )
+            )
         if work is None:
             work = await uow.works.add(
                 _new_work(
+                    narad_id=narad.id,
                     client_id=client.id,
                     executor_id=primary_executor.id,
                     doctor_id=primary_doctor.id,
@@ -917,6 +1192,55 @@ async def ensure_demo_entities(
             work_operation = await uow.operations.add_work_operation(
                 WorkOperation(work_id=work.id, operation_id=operation.id, operation_name=operation.name)
             )
+        else:
+            work.narad_id = narad.id
+            work.narad = narad
+
+        payment_result = await uow.session.execute(
+            select(Payment)
+            .options(selectinload(Payment.allocations))
+            .where(Payment.payment_number == DEMO_PAYMENT_DATA["payment_number"])
+        )
+        payment = payment_result.scalar_one_or_none()
+        if payment is None:
+            payment = await uow.payments.add(
+                Payment(
+                    payment_number=DEMO_PAYMENT_DATA["payment_number"],
+                    client_id=client.id,
+                    payment_date=DEMO_PAYMENT_DATA["payment_date"],
+                    method=DEMO_PAYMENT_DATA["method"],
+                    amount=DEMO_PAYMENT_DATA["amount"],
+                    external_reference=DEMO_PAYMENT_DATA["external_reference"],
+                    comment=DEMO_PAYMENT_DATA["comment"],
+                )
+            )
+        else:
+            payment.client_id = client.id
+            payment.payment_date = DEMO_PAYMENT_DATA["payment_date"]
+            payment.method = DEMO_PAYMENT_DATA["method"]
+            payment.amount = DEMO_PAYMENT_DATA["amount"]
+            payment.external_reference = DEMO_PAYMENT_DATA["external_reference"]
+            payment.comment = DEMO_PAYMENT_DATA["comment"]
+
+        existing_work_allocations = (
+            await uow.session.execute(select(PaymentAllocation).where(PaymentAllocation.work_id == work.id))
+        ).scalars().all()
+        for allocation in existing_work_allocations:
+            await uow.session.delete(allocation)
+        legacy_payment_number = f"LEGACY-{work.order_number}"
+        legacy_payments = (
+            await uow.session.execute(select(Payment).where(Payment.payment_number == legacy_payment_number))
+        ).scalars().all()
+        for legacy_payment in legacy_payments:
+            await uow.session.delete(legacy_payment)
+        await uow.session.flush()
+        set_committed_value(payment, "allocations", [])
+        payment.allocations = [
+            PaymentAllocation(
+                work_id=work.id,
+                amount=DEMO_PAYMENT_DATA["amount"],
+            )
+        ]
         _apply_material_data(material)
         _apply_work_data(
             work,
@@ -925,6 +1249,8 @@ async def ensure_demo_entities(
             doctor=primary_doctor,
             catalog_item=primary_catalog_item,
         )
+        _sync_narad_from_work(narad, work, contractor_id=contractor.id)
+        work.amount_paid = DEMO_PAYMENT_DATA["amount"]
         _apply_work_operation_data(
             work_operation,
             work=work,
@@ -932,7 +1258,9 @@ async def ensure_demo_entities(
             executor=primary_executor,
             category=primary_category,
         )
+        receipt = await _rebuild_demo_stock_flow(uow, material=material, work=work)
         _apply_material_usage_data(material_usage, work=work, material=material)
+        inventory_adjustment = await _rebuild_demo_inventory_adjustment(uow, material=material)
 
         if work_operation_existed:
             for log in list(work_operation.logs):
@@ -959,12 +1287,31 @@ async def ensure_demo_entities(
                 action="seeded",
                 actor_email=DEMO_ADMIN_EMAIL,
                 details={
-                    "patient_name": work.patient_name,
-                    "doctor_name": work.doctor_name,
-                    "doctor_phone": work.doctor_phone,
-                    "tooth_formula": work.tooth_formula,
+                    "patient_name": narad.patient_name,
+                    "doctor_name": narad.doctor_name,
+                    "doctor_phone": narad.doctor_phone,
+                    "tooth_formula": narad.tooth_formula,
                     "price_adjustment_percent": str(work.price_adjustment_percent),
                     "price_for_client": str(work.price_for_client),
+                },
+            )
+        )
+        if "status_logs" not in narad.__dict__:
+            set_committed_value(narad, "status_logs", [])
+        for log in list(narad.status_logs):
+            await uow.session.delete(log)
+        await uow.session.flush()
+        await uow.narads.add_status_log(
+            NaradStatusLog(
+                narad_id=narad.id,
+                action="seeded",
+                actor_email=DEMO_ADMIN_EMAIL,
+                from_status=None,
+                to_status=narad.status,
+                details={
+                    "work_id": work.id,
+                    "order_number": work.order_number,
+                    "client_name": client.name,
                 },
             )
         )
@@ -1026,7 +1373,17 @@ async def ensure_demo_entities(
     )
     await cache.invalidate_prefix("dashboard:")
 
-    return organization, client, primary_executor, material, work, primary_doctor, primary_catalog_item
+    return (
+        organization,
+        client,
+        primary_executor,
+        material,
+        work,
+        primary_doctor,
+        primary_catalog_item,
+        receipt,
+        inventory_adjustment,
+    )
 
 
 async def seed() -> None:
@@ -1037,7 +1394,17 @@ async def seed() -> None:
         await search.ensure_indices()
 
         auth_token = await ensure_demo_admin()
-        organization, client, executor, material, work, doctor, catalog_item = await ensure_demo_entities(search, cache)
+        (
+            organization,
+            client,
+            executor,
+            material,
+            work,
+            doctor,
+            catalog_item,
+            receipt,
+            inventory_adjustment,
+        ) = await ensure_demo_entities(search, cache)
 
         print("Seed завершен. Тестовые данные обновлены.")
         print(f"Администратор: {DEMO_ADMIN_EMAIL}")
@@ -1046,9 +1413,17 @@ async def seed() -> None:
         print(f"Текущая организация: {organization.legal_name}")
         print(f"Тестовый исполнитель: {executor.full_name}")
         print(f"Тестовый врач: {doctor.full_name}")
+        print(f"Тестовый подрядчик: {DEMO_CONTRACTOR_DATA['name']}")
         print(f"Тестовая позиция каталога: {catalog_item.name}")
         print(f"Тестовый материал: {material.name}")
+        print(f"Тестовый приход: {receipt.receipt_number}")
+        print(f"Тестовая инвентаризация: {inventory_adjustment.adjustment_number}")
+        print(
+            "Тестовая работа на стороне: "
+            f"{DEMO_WORK_ORDER_NUMBER} -> {DEMO_CONTRACTOR_DATA['name']}"
+        )
         print(f"Тестовая работа: {work.order_number}")
+        print(f"Тестовый платеж: {DEMO_PAYMENT_DATA['payment_number']}")
         print(f"Префикс токена доступа: {auth_token[:12]}")
     finally:
         await redis_client.aclose()

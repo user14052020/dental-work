@@ -17,12 +17,11 @@ import {
   operationExecutionStatusOptions,
   OperationExecutionStatus
 } from "@/entities/operations/model/types";
+import { paymentMethodOptions } from "@/entities/payments/model/types";
 import { updateWorkOperationStatus } from "@/entities/works/api/works-api";
 import { worksQueryKeys } from "@/entities/works/model/query-keys";
-import { faceShapeOptions, patientGenderOptions } from "@/entities/works/model/types";
 import { useWorkDetailQuery } from "@/entities/works/model/use-works-query";
 import { WorkAttachmentsSection } from "@/features/works/manage-attachments/ui/work-attachments-section";
-import { Odontogram } from "@/entities/works/ui/odontogram";
 import { formatCurrency } from "@/shared/lib/formatters/format-currency";
 import { formatDateTime } from "@/shared/lib/formatters/format-date";
 import { showErrorNotification } from "@/shared/lib/notifications/show-error";
@@ -47,14 +46,6 @@ function openPrintDocument(path: string) {
   window.open(path, "_blank", "noopener,noreferrer");
 }
 
-const patientGenderLabels = Object.fromEntries(
-  patientGenderOptions.map((option) => [option.value, option.label])
-) as Record<string, string>;
-const faceShapeLabels = Object.fromEntries(faceShapeOptions.map((option) => [option.value, option.label])) as Record<
-  string,
-  string
->;
-
 export function WorkDetailDrawer({
   workId,
   opened,
@@ -65,12 +56,9 @@ export function WorkDetailDrawer({
 }: WorkDetailDrawerProps) {
   const queryClient = useQueryClient();
   const detailQuery = useWorkDetailQuery(workId);
-  const patientGenderLabel = detailQuery.data?.patient_gender
-    ? patientGenderLabels[detailQuery.data.patient_gender] ?? detailQuery.data.patient_gender
-    : "—";
-  const faceShapeLabel = detailQuery.data?.face_shape
-    ? faceShapeLabels[detailQuery.data.face_shape] ?? detailQuery.data.face_shape
-    : "—";
+  const paymentMethodLabels = Object.fromEntries(
+    paymentMethodOptions.map((option) => [option.value, option.label])
+  ) as Record<string, string>;
 
   const operationStatusMutation = useMutation({
     mutationFn: ({
@@ -103,7 +91,7 @@ export function WorkDetailDrawer({
                 {detailQuery.data.order_number}
               </Text>
               <Text c="dimmed">
-                {detailQuery.data.client_name} · {detailQuery.data.work_type}
+                {detailQuery.data.work_type} · {detailQuery.data.narad_number}
                 {detailQuery.data.work_catalog_item_code ? ` · ${detailQuery.data.work_catalog_item_code}` : ""}
               </Text>
             </div>
@@ -114,21 +102,21 @@ export function WorkDetailDrawer({
             <Button
               leftSection={<IconFileInvoice size={16} />}
               variant="light"
-              onClick={() => openPrintDocument(`/api/proxy/documents/works/${detailQuery.data.id}/invoice`)}
+              onClick={() => openPrintDocument(`/api/proxy/documents/narads/${detailQuery.data.narad_id}/invoice`)}
             >
               Счет
             </Button>
             <Button
               leftSection={<IconFileText size={16} />}
               variant="light"
-              onClick={() => openPrintDocument(`/api/proxy/documents/works/${detailQuery.data.id}/act`)}
+              onClick={() => openPrintDocument(`/api/proxy/documents/narads/${detailQuery.data.narad_id}/act`)}
             >
               Акт
             </Button>
             <Button
               leftSection={<IconPrinter size={16} />}
               variant="light"
-              onClick={() => openPrintDocument(`/api/proxy/documents/works/${detailQuery.data.id}/job-order`)}
+              onClick={() => openPrintDocument(`/api/proxy/documents/narads/${detailQuery.data.narad_id}/job-order`)}
             >
               Наряд
             </Button>
@@ -136,7 +124,7 @@ export function WorkDetailDrawer({
 
           <DetailGrid
             items={[
-              { label: "Клиент", value: detailQuery.data.client_name },
+              { label: "Наряд", value: detailQuery.data.narad_number },
               { label: "Исполнитель", value: detailQuery.data.executor_name ?? "—" },
               {
                 label: "Каталог работ",
@@ -145,23 +133,6 @@ export function WorkDetailDrawer({
                   : "—"
               },
               { label: "Категория работы", value: detailQuery.data.work_catalog_item_category ?? "—" },
-              { label: "Врач", value: detailQuery.data.doctor_name ?? "—" },
-              { label: "Телефон врача", value: detailQuery.data.doctor_phone ?? "—" },
-              { label: "Пациент", value: detailQuery.data.patient_name ?? "—" },
-              {
-                label: "Возраст",
-                value:
-                  detailQuery.data.patient_age !== null && detailQuery.data.patient_age !== undefined
-                    ? String(detailQuery.data.patient_age)
-                    : "—"
-              },
-              { label: "Пол", value: patientGenderLabel },
-              { label: "Фото для цвета", value: detailQuery.data.require_color_photo ? "Да" : "Нет" },
-              { label: "Форма лица", value: faceShapeLabel },
-              { label: "Система имплантов", value: detailQuery.data.implant_system ?? "—" },
-              { label: "Металл", value: detailQuery.data.metal_type ?? "—" },
-              { label: "Цвет", value: detailQuery.data.shade_color ?? "—" },
-              { label: "Зубная формула", value: detailQuery.data.tooth_formula ?? "—" },
               { label: "Принята", value: formatDateTime(detailQuery.data.received_at) },
               { label: "Дедлайн", value: formatDateTime(detailQuery.data.deadline_at) },
               { label: "Завершена", value: formatDateTime(detailQuery.data.completed_at) },
@@ -238,16 +209,6 @@ export function WorkDetailDrawer({
             )}
           </Stack>
 
-          {detailQuery.data.tooth_selection.length ? (
-            <>
-              <Divider />
-              <Stack gap="sm">
-                <Text fw={700}>Графическая зубная формула</Text>
-                <Odontogram readOnly value={detailQuery.data.tooth_selection} />
-              </Stack>
-            </>
-          ) : null}
-
           <Divider />
           <Stack gap="sm">
             <Group justify="space-between" align="center">
@@ -316,6 +277,41 @@ export function WorkDetailDrawer({
               ))
             ) : (
               <Text c="dimmed">Для этой работы производственные операции пока не заданы.</Text>
+            )}
+          </Stack>
+
+          <Divider />
+          <Stack gap="sm">
+            <Text fw={700}>История оплат</Text>
+            {detailQuery.data.payment_allocations.length ? (
+              detailQuery.data.payment_allocations.map((allocation) => (
+                <div key={allocation.id} className="rounded-[20px] bg-slate-50 px-4 py-3">
+                  <Group justify="space-between" align="start" wrap="wrap">
+                    <div>
+                      <Text fw={600}>
+                        {allocation.payment_number} · {formatCurrency(allocation.allocated_amount)}
+                      </Text>
+                      <Text c="dimmed" size="sm">
+                        {paymentMethodLabels[allocation.payment_method] ?? allocation.payment_method} ·{" "}
+                        {formatDateTime(allocation.payment_date)}
+                      </Text>
+                    </div>
+                    <Text c="dimmed" size="sm">
+                      Платеж: {formatCurrency(allocation.payment_amount)}
+                    </Text>
+                  </Group>
+                  <Text c="dimmed" mt={6} size="sm">
+                    Нераспределенный остаток платежа: {formatCurrency(allocation.payment_unallocated_total)}
+                  </Text>
+                  {allocation.external_reference ? (
+                    <Text c="dimmed" size="sm">
+                      Внешний номер: {allocation.external_reference}
+                    </Text>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <Text c="dimmed">Платежи по заказу пока не распределялись.</Text>
             )}
           </Stack>
 

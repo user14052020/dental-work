@@ -54,7 +54,7 @@ export function WorksTable({
                     <Table.Td>
                       <Text fw={700}>{work.order_number}</Text>
                       <Text c="dimmed" size="sm">
-                        {work.patient_name ?? work.doctor_name ?? formatDateTime(work.received_at)}
+                        Наряд {work.narad_number}
                       </Text>
                     </Table.Td>
                     <Table.Td>{work.work_type}</Table.Td>

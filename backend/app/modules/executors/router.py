@@ -4,12 +4,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.dependencies import get_current_user, get_executor_service
+from app.api.dependencies import get_current_user, get_executor_service, require_permissions
 from app.modules.executors.schemas import ExecutorCreate, ExecutorListResponse, ExecutorRead, ExecutorUpdate
 from app.modules.executors.service import ExecutorService
 
 
-router = APIRouter(prefix="/executors", tags=["executors"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/executors",
+    tags=["executors"],
+    dependencies=[Depends(get_current_user), Depends(require_permissions("executors.manage"))],
+)
 
 
 @router.get("", response_model=ExecutorListResponse)

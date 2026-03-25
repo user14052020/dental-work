@@ -18,7 +18,11 @@ def render_invoice_html(context: dict[str, Any]) -> str:
     client = context["client"]
     line_items = context["line_items"]
     vat = context["vat"]
-    work = context["work"]
+    document_number = context["document_number"]
+    scope_note = context.get("scope_note")
+    heading = context.get("document_heading") or (
+        f"Счет № {html_text(document_number)} от {format_date_ru(context['document_date'])}"
+    )
 
     rows = "".join(
         f"""
@@ -32,7 +36,7 @@ def render_invoice_html(context: dict[str, Any]) -> str:
     )
 
     return _document_shell(
-        title=f"Счет № {html_text(work.order_number)} от {format_date_ru(context['document_date'])}",
+        title=heading,
         body=f"""
         <div class="headline">{html_text(organization.display_name)}</div>
         <div class="subline">{html_text(organization.legal_address or organization.mailing_address)}</div>
@@ -71,6 +75,7 @@ def render_invoice_html(context: dict[str, Any]) -> str:
         <div><b>ИНН:</b> {html_text(client.inn)} &nbsp;&nbsp; <b>КПП:</b> {html_text(client.kpp)}</div>
         <div><b>Договор:</b> {html_text(client.contract_number)} от {format_date_ru(client.contract_date)}</div>
         <div><b>Валюта:</b> Российский рубль, 643</div>
+        {_render_scope_note(scope_note)}
 
         <table class="items-table">
           <thead>
@@ -115,7 +120,11 @@ def render_act_html(context: dict[str, Any]) -> str:
     client = context["client"]
     line_items = context["line_items"]
     vat = context["vat"]
-    work = context["work"]
+    document_number = context["document_number"]
+    scope_note = context.get("scope_note")
+    heading = context.get("document_heading") or (
+        f"Акт выполненных работ (оказанных услуг) № {html_text(document_number)} от {format_date_ru(context['document_date'])}"
+    )
     rows = "".join(
         f"""
         <tr>
@@ -129,13 +138,14 @@ def render_act_html(context: dict[str, Any]) -> str:
     )
 
     return _document_shell(
-        title=f"Акт выполненных работ (оказанных услуг) № {html_text(work.order_number)} от {format_date_ru(context['document_date'])}",
+        title=heading,
         body=f"""
         <div><b>Исполнитель:</b> {html_text(organization.legal_name)}, ИНН {html_text(organization.inn)}, {html_text(organization.legal_address)}, тел.: {html_text(organization.phone)}</div>
         <div class="spacer-sm"></div>
         <div><b>Заказчик:</b> {html_text(client.legal_name or client.name)}, ИНН {html_text(client.inn)}, КПП {html_text(client.kpp)}, {html_text(client.legal_address or client.address)}, тел.: {html_text(client.phone)}</div>
         <div class="spacer-sm"></div>
         <div><b>Договор:</b> №{html_text(client.contract_number)} от {format_date_ru(client.contract_date)}</div>
+        {_render_scope_note(scope_note)}
 
         <table class="items-table">
           <thead>
@@ -180,10 +190,20 @@ def render_act_html(context: dict[str, Any]) -> str:
 
 
 def render_job_order_html(context: dict[str, Any]) -> str:
-    work = context["work"]
+    narad = context["narad"]
+    work = context["primary_work"]
     client = context["client"]
-    face_shape = work.face_shape or ""
-    selected_teeth = work.tooth_selection or []
+    job_order_items = context.get("job_order_items") or []
+    patient_name = _resolve_narad_or_work_value(work, "patient_name")
+    patient_age = _resolve_narad_or_work_value(work, "patient_age")
+    patient_gender = _resolve_narad_or_work_value(work, "patient_gender")
+    face_shape = _resolve_narad_or_work_value(work, "face_shape") or ""
+    selected_teeth = _resolve_narad_or_work_value(work, "tooth_selection") or []
+    require_color_photo = _resolve_narad_or_work_value(work, "require_color_photo")
+    implant_system = _resolve_narad_or_work_value(work, "implant_system")
+    metal_type = _resolve_narad_or_work_value(work, "metal_type")
+    shade_color = _resolve_narad_or_work_value(work, "shade_color")
+    tooth_formula = _resolve_narad_or_work_value(work, "tooth_formula")
     selected_rows = "".join(
         f"""
         <tr>
@@ -195,41 +215,67 @@ def render_job_order_html(context: dict[str, Any]) -> str:
         for item in selected_teeth
     ) or '<tr><td colspan="3">Зубы на схеме не отмечены.</td></tr>'
 
+    job_rows = "".join(
+        f"""
+        <tr>
+          <td>{index}</td>
+          <td>{html_text(item['order_number'])}</td>
+          <td>{html_text(item['work_type'])}</td>
+          <td>{html_text(item['description'])}</td>
+        </tr>
+        """
+        for index, item in enumerate(job_order_items, start=1)
+    ) or '<tr><td colspan="4">Строки заказа не сформированы.</td></tr>'
+
     return _document_shell(
-        title=f"Наряд № {html_text(work.order_number)}",
+        title=f"Наряд № {html_text(narad.narad_number)}",
         body=f"""
         <div class="headline">{html_text(context['organization'].display_name)}</div>
 
         <table class="job-table">
           <tr>
             <td><b>Заказчик</b><br />{html_text(client.name)}</td>
-            <td><b>ФИО врача</b><br />{html_text(work.doctor_name)}</td>
+            <td><b>ФИО врача</b><br />{html_text(getattr(narad, 'doctor_name', None) or work.doctor_name)}</td>
           </tr>
           <tr>
             <td><b>раб/тел</b><br />{html_text(client.phone)}</td>
-            <td><b>моб/тел</b><br />{html_text(work.doctor_phone)}</td>
+            <td><b>моб/тел</b><br />{html_text(getattr(narad, 'doctor_phone', None) or work.doctor_phone)}</td>
           </tr>
           <tr>
-            <td><b>Пациент</b><br />{html_text(work.patient_name)}</td>
-            <td><b>Возраст / Пол</b><br />{html_text(work.patient_age)} &nbsp;&nbsp; М {checkbox(work.patient_gender == 'male')} &nbsp; Ж {checkbox(work.patient_gender == 'female')}</td>
+            <td><b>Пациент</b><br />{html_text(patient_name)}</td>
+            <td><b>Возраст / Пол</b><br />{html_text(patient_age)} &nbsp;&nbsp; М {checkbox(patient_gender == 'male')} &nbsp; Ж {checkbox(patient_gender == 'female')}</td>
           </tr>
           <tr>
-            <td><b>Предоставить фотоаппарат для определения цвета</b><br />{checkbox(bool(work.require_color_photo))}</td>
+            <td><b>Предоставить фотоаппарат для определения цвета</b><br />{checkbox(bool(require_color_photo))}</td>
             <td><b>Форма лица</b><br />□ {checkbox(face_shape == 'square')} &nbsp; ○ {checkbox(face_shape == 'oval')} &nbsp; △ {checkbox(face_shape == 'triangle')}</td>
           </tr>
         </table>
 
         <div class="job-meta-grid">
-          <div><b>Система имплантов</b><br />{html_text(work.implant_system)}</div>
-          <div><b>Металл</b><br />{html_text(work.metal_type)}</div>
-          <div><b>Цвет</b><br />{html_text(work.shade_color)}</div>
+          <div><b>Система имплантов</b><br />{html_text(implant_system)}</div>
+          <div><b>Металл</b><br />{html_text(metal_type)}</div>
+          <div><b>Цвет</b><br />{html_text(shade_color)}</div>
         </div>
 
-        <div class="section-title">Описание работы</div>
-        <div class="paragraph">{html_multiline(work.description)}</div>
+        <div class="section-title">Описание наряда</div>
+        <div class="paragraph">{html_multiline(narad.description or work.description)}</div>
+
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th class="narrow">#</th>
+              <th>Работа</th>
+              <th>Тип</th>
+              <th>Описание</th>
+            </tr>
+          </thead>
+          <tbody>
+            {job_rows}
+          </tbody>
+        </table>
 
         <div class="section-title">Сводка по зубной формуле</div>
-        <div class="formula-box">{html_text(work.tooth_formula)}</div>
+        <div class="formula-box">{html_text(tooth_formula)}</div>
 
         <table class="items-table">
           <thead>
@@ -250,6 +296,8 @@ def render_job_order_html(context: dict[str, Any]) -> str:
 
 
 def build_work_line_items(work: Any) -> list[dict[str, Any]]:
+    patient_name = _resolve_narad_or_work_value(work, "patient_name")
+    tooth_formula = _resolve_narad_or_work_value(work, "tooth_formula")
     work_items = list(getattr(work, "work_items", []) or [])
     if work_items:
         line_items: list[dict[str, Any]] = []
@@ -257,10 +305,10 @@ def build_work_line_items(work: Any) -> list[dict[str, Any]]:
             description_parts = [item.work_type]
             if item.description and item.description.strip() and item.description.strip() != item.work_type.strip():
                 description_parts.append(item.description.strip())
-            if index == 1 and work.patient_name:
-                description_parts.append(f"Пациент: {work.patient_name}")
-            if index == 1 and work.tooth_formula:
-                description_parts.append(f"Формула: {work.tooth_formula}")
+            if index == 1 and patient_name:
+                description_parts.append(f"Пациент: {patient_name}")
+            if index == 1 and tooth_formula:
+                description_parts.append(f"Формула: {tooth_formula}")
 
             line_items.append(
                 {
@@ -275,12 +323,76 @@ def build_work_line_items(work: Any) -> list[dict[str, Any]]:
     return build_single_work_line_items(work)
 
 
+def build_narad_line_items(narad: Any) -> list[dict[str, Any]]:
+    line_items: list[dict[str, Any]] = []
+    works = list(getattr(narad, "works", []) or [])
+    for work in works:
+        work_lines = build_work_line_items(work)
+        for item in work_lines:
+            line_items.append(
+                {
+                    **item,
+                    "description": f"{work.order_number} · {item['description']}",
+                }
+            )
+
+    if line_items:
+        return line_items
+
+    primary_work = works[0] if works else None
+    return build_single_work_line_items(primary_work) if primary_work else []
+
+
+def build_narad_job_order_items(narad: Any) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for work in list(getattr(narad, "works", []) or []):
+        work_items = list(getattr(work, "work_items", []) or [])
+        if work_items:
+            for item in work_items:
+                items.append(
+                    {
+                        "order_number": work.order_number,
+                        "work_type": item.work_type,
+                        "description": item.description or item.work_type,
+                    }
+                )
+            continue
+
+        items.append(
+            {
+                "order_number": work.order_number,
+                "work_type": work.work_type,
+                "description": work.description or work.work_type,
+            }
+        )
+
+    return items
+
+
+def build_client_line_items(narads: list[Any]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for narad in narads:
+        for work in list(getattr(narad, "works", []) or []):
+            work_lines = build_work_line_items(work)
+            for item in work_lines:
+                description_parts = [narad.narad_number, work.order_number, item["description"]]
+                items.append(
+                    {
+                        **item,
+                        "description": " · ".join(part for part in description_parts if part),
+                    }
+                )
+    return items
+
+
 def build_single_work_line_items(work: Any) -> list[dict[str, Any]]:
+    patient_name = _resolve_narad_or_work_value(work, "patient_name")
+    tooth_formula = _resolve_narad_or_work_value(work, "tooth_formula")
     description_parts = [work.work_type]
-    if work.patient_name:
-        description_parts.append(f"Пациент: {work.patient_name}")
-    if work.tooth_formula:
-        description_parts.append(f"Формула: {work.tooth_formula}")
+    if patient_name:
+        description_parts.append(f"Пациент: {patient_name}")
+    if tooth_formula:
+        description_parts.append(f"Формула: {tooth_formula}")
 
     description = " · ".join(description_parts)
     return [
@@ -421,3 +533,18 @@ def _document_shell(*, title: str, body: str) -> str:
       </body>
     </html>
     """
+
+
+def _resolve_narad_or_work_value(work: Any, attr_name: str) -> Any:
+    narad = getattr(work, "narad", None)
+    if narad is not None:
+        narad_value = getattr(narad, attr_name, None)
+        if narad_value is not None:
+            return narad_value
+    return getattr(work, attr_name, None)
+
+
+def _render_scope_note(value: Any) -> str:
+    if not value:
+        return ""
+    return f'<div class="paragraph"><b>Основание:</b> {html_text(value)}</div>'

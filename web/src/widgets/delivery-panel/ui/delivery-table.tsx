@@ -1,5 +1,5 @@
-import { ActionIcon, Badge, Checkbox, Group, Loader, Table, Text } from "@mantine/core";
-import { IconEye } from "@tabler/icons-react";
+import { ActionIcon, Badge, Checkbox, Group, Loader, Table, Text, Tooltip } from "@mantine/core";
+import { IconEye, IconPencil } from "@tabler/icons-react";
 
 import { DeliveryItem } from "@/entities/delivery/model/types";
 import { formatCurrency } from "@/shared/lib/formatters/format-currency";
@@ -14,10 +14,12 @@ type DeliveryTableProps = {
   meta?: PageMeta;
   isLoading: boolean;
   selectedIds: string[];
-  onToggleSelected: (workId: string) => void;
-  onToggleAll: (workIds: string[]) => void;
+  onToggleSelected: (naradId: string) => void;
+  onToggleAll: (naradIds: string[]) => void;
   onPageChange: (page: number) => void;
-  onView: (workId: string) => void;
+  onView: (naradId: string) => void;
+  canEditDelivery: boolean;
+  onEditDelivery: (item: DeliveryItem) => void;
 };
 
 export function DeliveryTable({
@@ -28,7 +30,9 @@ export function DeliveryTable({
   onToggleSelected,
   onToggleAll,
   onPageChange,
-  onView
+  onView,
+  canEditDelivery,
+  onEditDelivery
 }: DeliveryTableProps) {
   const visibleIds = items.map((item) => item.id);
   const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
@@ -53,7 +57,7 @@ export function DeliveryTable({
                       onChange={() => onToggleAll(visibleIds)}
                     />
                   </Table.Th>
-                  <Table.Th>Заказ</Table.Th>
+                  <Table.Th>Наряд</Table.Th>
                   <Table.Th>Клиент</Table.Th>
                   <Table.Th>Адрес доставки</Table.Th>
                   <Table.Th>Контакт</Table.Th>
@@ -73,20 +77,35 @@ export function DeliveryTable({
                       />
                     </Table.Td>
                     <Table.Td>
-                      <Text fw={700}>{item.order_number}</Text>
+                      <Text fw={700}>{item.narad_number}</Text>
                       <Text c="dimmed" size="sm">
-                        {item.work_type}
+                        {item.title}
                         {item.patient_name ? ` · ${item.patient_name}` : ""}
+                      </Text>
+                      <Text c="dimmed" size="sm">
+                        {item.work_numbers.join(", ") || "—"}
                       </Text>
                     </Table.Td>
                     <Table.Td>
                       <Text fw={600}>{item.client_name}</Text>
                       <Text c="dimmed" size="sm">
-                        {item.executor_name ?? "Исполнитель не назначен"}
+                        {item.executor_names.length ? item.executor_names.join(", ") : "Исполнитель не назначен"}
+                      </Text>
+                      <Text c="dimmed" size="sm">
+                        {item.work_types.length ? item.work_types.join(", ") : "Типы работ не указаны"}
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      <Text size="sm">{item.delivery_address ?? "—"}</Text>
+                      <Group justify="space-between" align="start" wrap="nowrap" gap="xs">
+                        <Text size="sm">{item.delivery_address ?? "—"}</Text>
+                        {canEditDelivery ? (
+                          <Tooltip label="Редактировать доставку">
+                            <ActionIcon variant="subtle" color="gray" onClick={() => onEditDelivery(item)}>
+                              <IconPencil size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        ) : null}
+                      </Group>
                     </Table.Td>
                     <Table.Td>
                       <Text size="sm">{item.delivery_contact ?? "—"}</Text>
@@ -104,7 +123,7 @@ export function DeliveryTable({
                         {item.delivery_sent ? formatDateTime(item.delivery_sent_at) : "Не отправлено"}
                       </Badge>
                     </Table.Td>
-                    <Table.Td>{formatCurrency(item.price_for_client)}</Table.Td>
+                    <Table.Td>{formatCurrency(item.total_price)}</Table.Td>
                     <Table.Td>
                       <Group gap="xs" justify="flex-end">
                         <ActionIcon variant="light" onClick={() => onView(item.id)}>
@@ -120,7 +139,7 @@ export function DeliveryTable({
           <PaginationControls meta={meta} onChange={onPageChange} />
         </>
       ) : (
-        <Text c="dimmed">Работы для доставки не найдены.</Text>
+        <Text c="dimmed">Наряды для доставки не найдены.</Text>
       )}
     </SectionCard>
   );

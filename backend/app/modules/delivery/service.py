@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from app.common.enums import WorkStatus
 from app.common.pagination import PaginatedResponse
@@ -8,6 +9,7 @@ from app.common.search_documents import build_work_search_document
 from app.common.services import CacheService, SearchService
 from app.core.config import settings
 from app.core.exceptions import NotFoundError
+from app.db.models.narad import Narad
 from app.db.models.work import Work, WorkChangeLog
 from app.db.unitofwork import SQLAlchemyUnitOfWork
 from app.modules.delivery.schemas import (
@@ -15,6 +17,8 @@ from app.modules.delivery.schemas import (
     DeliveryListResponse,
     DeliveryMarkSentPayload,
     DeliveryMarkSentResponse,
+    DeliverySortBy,
+    DeliverySortDirection,
 )
 from app.modules.delivery.templates import render_delivery_manifest_html
 
@@ -34,17 +38,26 @@ class DeliveryService:
         client_id: str | None,
         executor_id: str | None,
         sent: bool | None,
+        sort_by: DeliverySortBy,
+        sort_direction: DeliverySortDirection,
     ) -> DeliveryListResponse:
         search_ids = await self._search.search_works(search) if search else None
         async with self._uow as uow:
-            items, total_items = await uow.works.list_for_delivery(
+            narad_ids = None
+            if search_ids:
+                works = await uow.works.list_by_ids(search_ids)
+                narad_ids = list(dict.fromkeys(work.narad_id for work in works if getattr(work, "narad_id", None)))
+
+            items, total_items = await uow.narads.list_for_delivery(
                 page=page,
                 page_size=page_size,
-                search=search if not search_ids else None,
+                search=search if not narad_ids else None,
                 client_id=client_id,
                 executor_id=executor_id,
                 sent=sent,
-                ids=search_ids if search_ids else None,
+                ids=narad_ids,
+                sort_by=sort_by,
+                sort_direction=sort_direction,
             )
             rows = [self._map_delivery_item(item) for item in items]
         return PaginatedResponse[DeliveryItemRead].create(
@@ -62,38 +75,43 @@ class DeliveryService:
     ) -> DeliveryMarkSentResponse:
         now = datetime.now(timezone.utc)
         async with self._uow as uow:
-            works = await uow.works.list_for_delivery_by_ids(payload.work_ids)
-            works_by_id = {work.id: work for work in works}
-            missing_id = next((work_id for work_id in payload.work_ids if work_id not in works_by_id), None)
+            narads = await uow.narads.list_for_delivery_by_ids(payload.narad_ids)
+            narads_by_id = {narad.id: narad for narad in narads}
+            missing_id = next((narad_id for narad_id in payload.narad_ids if narad_id not in narads_by_id), None)
             if missing_id:
-                raise NotFoundError("work", missing_id)
+                raise NotFoundError("narad", missing_id)
 
             updated_count = 0
-            for work in works:
-                if not work.delivery_sent:
+            indexed_works: list[Work] = []
+            for narad in narads:
+                if not self._is_narad_delivery_sent(narad):
                     updated_count += 1
 
-                work.delivery_sent = True
-                work.delivery_sent_at = work.delivery_sent_at or now
-                work.status = WorkStatus.DELIVERED.value
-                work.completed_at = work.completed_at or now
-                await uow.works.add_change_log(
-                    WorkChangeLog(
-                        work_id=work.id,
-                        action="delivery_marked_sent",
-                        actor_email=actor_email,
-                        details={
-                            "delivery_sent": True,
-                            "delivery_sent_at": work.delivery_sent_at.isoformat() if work.delivery_sent_at else None,
-                            "status": work.status,
-                        },
+                for work in narad.works:
+                    work.delivery_sent = True
+                    work.delivery_sent_at = work.delivery_sent_at or now
+                    work.status = WorkStatus.DELIVERED.value
+                    work.completed_at = work.completed_at or now
+                    indexed_works.append(work)
+                    await uow.works.add_change_log(
+                        WorkChangeLog(
+                            work_id=work.id,
+                            action="delivery_marked_sent",
+                            actor_email=actor_email,
+                            details={
+                                "narad_id": narad.id,
+                                "delivery_sent": True,
+                                "delivery_sent_at": work.delivery_sent_at.isoformat() if work.delivery_sent_at else None,
+                                "status": work.status,
+                            },
+                        )
                     )
-                )
+                self._sync_narad_delivery_status(narad)
 
             await uow.commit()
-            rows = [self._map_delivery_item(work) for work in works]
+            rows = [self._map_delivery_item(narad) for narad in narads]
 
-        for work in works:
+        for work in indexed_works:
             await self._search.index_document(
                 settings.elasticsearch_works_index,
                 work.id,
@@ -102,19 +120,19 @@ class DeliveryService:
         await self._cache.invalidate_prefix("dashboard:")
         return DeliveryMarkSentResponse(updated_count=updated_count, items=rows)
 
-    async def render_manifest(self, work_ids: list[str]) -> str:
+    async def render_manifest(self, narad_ids: list[str]) -> str:
         async with self._uow as uow:
-            works = await uow.works.list_for_delivery_by_ids(work_ids)
-            works_by_id = {work.id: work for work in works}
-            missing_id = next((work_id for work_id in work_ids if work_id not in works_by_id), None)
+            narads = await uow.narads.list_for_delivery_by_ids(narad_ids)
+            narads_by_id = {narad.id: narad for narad in narads}
+            missing_id = next((narad_id for narad_id in narad_ids if narad_id not in narads_by_id), None)
             if missing_id:
-                raise NotFoundError("work", missing_id)
+                raise NotFoundError("narad", missing_id)
 
             organization = await uow.organization.get_profile()
             if organization is None:
                 raise NotFoundError("organization_profile", "default")
 
-            rows = [self._map_delivery_item(works_by_id[work_id]) for work_id in work_ids if work_id in works_by_id]
+            rows = [self._map_delivery_item(narads_by_id[narad_id]) for narad_id in narad_ids if narad_id in narads_by_id]
 
         return render_delivery_manifest_html(
             {
@@ -125,27 +143,53 @@ class DeliveryService:
         )
 
     @staticmethod
-    def _map_delivery_item(work: Work) -> DeliveryItemRead:
-        return DeliveryItemRead(
-            id=work.id,
-            created_at=work.created_at,
-            updated_at=work.updated_at,
-            order_number=work.order_number,
-            work_type=work.work_type,
-            status=work.status,
-            client_id=work.client_id,
-            client_name=work.client.name,
-            delivery_address=work.client.delivery_address or work.client.address,
-            delivery_contact=work.client.delivery_contact or work.client.contact_person,
-            delivery_phone=work.client.delivery_phone or work.client.phone,
-            executor_id=work.executor_id,
-            executor_name=work.executor.full_name if work.executor else None,
-            doctor_name=work.doctor_name,
-            patient_name=work.patient_name,
-            received_at=work.received_at,
-            deadline_at=work.deadline_at,
-            completed_at=work.completed_at,
-            delivery_sent=work.delivery_sent,
-            delivery_sent_at=work.delivery_sent_at,
-            price_for_client=work.price_for_client,
+    def _map_delivery_item(narad: Narad) -> DeliveryItemRead:
+        works = list(narad.works or [])
+        work_numbers = [work.order_number for work in works]
+        work_types = list(dict.fromkeys(work.work_type for work in works if work.work_type))
+        executor_names = list(
+            dict.fromkeys(work.executor.full_name for work in works if getattr(work, "executor", None) is not None)
         )
+        total_price = sum((work.price_for_client for work in works), start=Decimal("0.00"))
+        delivery_sent_at_values = [work.delivery_sent_at for work in works if work.delivery_sent_at is not None]
+        delivery_sent = DeliveryService._is_narad_delivery_sent(narad)
+
+        return DeliveryItemRead(
+            id=narad.id,
+            created_at=narad.created_at,
+            updated_at=narad.updated_at,
+            narad_number=narad.narad_number,
+            title=narad.title,
+            status=narad.status,
+            client_id=narad.client_id,
+            client_name=narad.client.name,
+            delivery_address=narad.client.delivery_address or narad.client.address,
+            delivery_contact=narad.client.delivery_contact or narad.client.contact_person,
+            delivery_phone=narad.client.delivery_phone or narad.client.phone,
+            works_count=len(works),
+            work_numbers=work_numbers,
+            work_types=work_types,
+            executor_names=executor_names,
+            doctor_name=narad.doctor_name,
+            patient_name=narad.patient_name,
+            received_at=narad.received_at,
+            deadline_at=narad.deadline_at,
+            completed_at=narad.completed_at,
+            delivery_sent=delivery_sent,
+            delivery_sent_at=max(delivery_sent_at_values) if delivery_sent and delivery_sent_at_values else None,
+            total_price=total_price,
+        )
+
+    @staticmethod
+    def _is_narad_delivery_sent(narad: Narad) -> bool:
+        works = list(getattr(narad, "works", []) or [])
+        return bool(works) and all(work.delivery_sent for work in works)
+
+    @staticmethod
+    def _sync_narad_delivery_status(narad: Narad) -> None:
+        if DeliveryService._is_narad_delivery_sent(narad):
+            narad.status = WorkStatus.DELIVERED.value
+            narad.completed_at = narad.completed_at or max(
+                (work.completed_at for work in narad.works if work.completed_at is not None),
+                default=datetime.now(timezone.utc),
+            )

@@ -4,16 +4,18 @@ export type DeliveryItem = {
   id: string;
   created_at: string;
   updated_at: string;
-  order_number: string;
-  work_type: string;
+  narad_number: string;
+  title: string;
   status: string;
   client_id: string;
   client_name: string;
   delivery_address?: string | null;
   delivery_contact?: string | null;
   delivery_phone?: string | null;
-  executor_id?: string | null;
-  executor_name?: string | null;
+  works_count: number;
+  work_numbers: string[];
+  work_types: string[];
+  executor_names: string[];
   doctor_name?: string | null;
   patient_name?: string | null;
   received_at: string;
@@ -21,7 +23,7 @@ export type DeliveryItem = {
   completed_at?: string | null;
   delivery_sent: boolean;
   delivery_sent_at?: string | null;
-  price_for_client: string;
+  total_price: string;
 };
 
 export type DeliveryFilters = {
@@ -31,12 +33,14 @@ export type DeliveryFilters = {
   client_id?: string;
   executor_id?: string;
   sent?: boolean;
+  sort_by?: "client_name" | "deadline_at" | "received_at";
+  sort_direction?: "asc" | "desc";
 };
 
 export type DeliveryResponse = PaginatedResponse<DeliveryItem>;
 
 export type DeliveryMarkSentPayload = {
-  work_ids: string[];
+  narad_ids: string[];
 };
 
 export type DeliveryMarkSentResponse = {

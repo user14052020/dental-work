@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Group, Modal, Stack, TextInput } from "@mantine/core";
+import { Button, Group, Modal, Stack, TextInput, Textarea } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -19,12 +19,17 @@ export function ConsumeMaterialModal({ materialId, opened, onClose }: ConsumeMat
   const queryClient = useQueryClient();
   const form = useForm({
     initialValues: {
-      quantity: "0"
+      quantity: "0",
+      reason: ""
     }
   });
 
   const mutation = useMutation({
-    mutationFn: () => consumeMaterial(materialId as string, { quantity: form.values.quantity }),
+    mutationFn: () =>
+      consumeMaterial(materialId as string, {
+        quantity: form.values.quantity,
+        ...(form.values.reason.trim() ? { reason: form.values.reason.trim() } : {})
+      }),
     onSuccess() {
       queryClient.invalidateQueries({ queryKey: materialsQueryKeys.root });
       showSuccessNotification("Списание выполнено.");
@@ -45,6 +50,12 @@ export function ConsumeMaterialModal({ materialId, opened, onClose }: ConsumeMat
       >
         <Stack gap="md">
           <TextInput label="Количество" type="number" {...form.getInputProps("quantity")} />
+          <Textarea
+            label="Причина"
+            placeholder="Например: выдача технику, коррекция склада, расход инструмента"
+            minRows={3}
+            {...form.getInputProps("reason")}
+          />
           <Group justify="flex-end">
             <Button color="gray" type="button" variant="light" onClick={onClose}>
               Отмена

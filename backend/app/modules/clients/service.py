@@ -19,6 +19,7 @@ from app.modules.clients.schemas import (
     ClientWorkCatalogPriceRead,
     ClientWorkCatalogPriceUpsert,
 )
+from app.modules.payments.schemas import PaymentCompactRead
 from app.modules.works.schemas import WorkCompactRead
 
 
@@ -60,6 +61,33 @@ class ClientService:
             order_total = sum((work.price_for_client for work in client.works), Decimal("0.00"))
             paid_total = sum((work.amount_paid for work in client.works), Decimal("0.00"))
             recent_works = [WorkCompactRead.model_validate(work) for work in client.works[:10]]
+            payments = await uow.payments.list_by_client(client.id, limit=10)
+            recent_payments = [
+                PaymentCompactRead(
+                    id=payment.id,
+                    created_at=payment.created_at,
+                    updated_at=payment.updated_at,
+                    payment_number=payment.payment_number,
+                    client_id=payment.client_id,
+                    client_name=client.name,
+                    payment_date=payment.payment_date,
+                    method=payment.method,
+                    amount=payment.amount,
+                    allocated_total=sum(
+                        (allocation.amount for allocation in payment.allocations),
+                        Decimal("0.00"),
+                    ),
+                    unallocated_total=max(
+                        payment.amount
+                        - sum((allocation.amount for allocation in payment.allocations), Decimal("0.00")),
+                        Decimal("0.00"),
+                    ),
+                    allocation_count=len(payment.allocations),
+                    external_reference=payment.external_reference,
+                    comment=payment.comment,
+                )
+                for payment in payments
+            ]
             return ClientDetailRead.model_validate(client).model_copy(
                 update={
                     "work_count": len(client.works),
@@ -67,6 +95,7 @@ class ClientService:
                     "paid_total": paid_total,
                     "unpaid_total": order_total - paid_total,
                     "recent_works": recent_works,
+                    "recent_payments": recent_payments,
                     "work_catalog_prices": self._map_catalog_prices(client.catalog_prices),
                 },
             )

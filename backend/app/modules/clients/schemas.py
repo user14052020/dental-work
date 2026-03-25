@@ -8,6 +8,7 @@ from pydantic import EmailStr, Field, StringConstraints
 
 from app.common.pagination import PaginatedResponse
 from app.common.schemas import BaseSchema, PhoneString, TimestampedReadSchema
+from app.modules.payments.schemas import PaymentCompactRead
 from app.modules.works.schemas import WorkCompactRead
 
 
@@ -113,6 +114,7 @@ class ClientRead(TimestampedReadSchema):
 
 class ClientDetailRead(ClientRead):
     recent_works: list[WorkCompactRead] = []
+    recent_payments: list[PaymentCompactRead] = Field(default_factory=list)
     work_catalog_prices: list[ClientWorkCatalogPriceRead] = Field(default_factory=list)
 
 
